@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
-import { CARD_STR, CardColor, Lang, DEF } from './data';
+import { CARD_STR, CardColor, Lang, DEF, WORKOUTS } from './data';
 import { T, LOGO_BLACK, LOGO_RATIO, LOGO_WHITE } from './ui';
 import { useApp } from './store';
 
@@ -19,7 +19,7 @@ const CLEAR = {
 export function ShareCard({ variant, ink, lang, k }: {
   variant: CardColor | 'clear'; ink: 'light' | 'dark'; lang: Lang; k: number;
 }) {
-  const { total, pct, prs, hidden } = useApp();
+  const { total, pct, prs, hidden, wk } = useApp();
   const he = lang === 'he';
   const st = CARD_STR[lang];
   const z = (n: number) => n * k;
@@ -40,7 +40,7 @@ export function ShareCard({ variant, ink, lang, k }: {
   const digits = totalStr.replace(/\D/g, '').length;
   const commas = (totalStr.match(/,/g) || []).length;
   const em = digits * 0.64 + commas * 0.28;
-  const focus = lang === 'he' ? 'משיכה' : 'Pull';
+  const focus = WORKOUTS[wk].focus[lang];
   const date = '27.10.2026';
 
   const hf = (props: object) => ({ he, ...props });
@@ -61,7 +61,7 @@ export function ShareCard({ variant, ink, lang, k }: {
             <T k="num" w={500} s={z(40)} c={c.ink} style={{ paddingTop: z(8) }} he={false}>{date}</T>
           </View>
           <View style={{ flexDirection: 'row', gap: z(24), alignItems: 'baseline', marginTop: z(72) }}>
-            <T {...hf({})} k="head" s={z(76)} c={c.ink}>{st.workout} <T k="num" w={800} s={z(76)} c={c.ink}>B</T></T>
+            <T {...hf({})} k="head" s={z(76)} c={c.ink}>{st.workout} <T k="num" w={800} s={z(76)} c={c.ink}>{wk}</T></T>
             <T {...hf({})} k="head" s={z(76)} c={c.ink}>·</T>
             <T {...hf({})} k="head" s={z(76)} c={c.ink}>{focus}</T>
           </View>
@@ -122,7 +122,7 @@ export function ShareCard({ variant, ink, lang, k }: {
         <View style={{ gap: z(36), alignSelf: 'stretch' }}>
           <Image source={c.white ? LOGO_WHITE : LOGO_BLACK} contentFit="contain" style={{ width: z(380), height: z(380) / LOGO_RATIO }} />
           <View style={{ gap: z(14) }}>
-            <T {...hf({})} k="head" s={z(64)} c={c.ink} lh={1}>{st.workout} <T k="num" w={800} s={z(64)} c={c.ink}>B</T> · {focus}</T>
+            <T {...hf({})} k="head" s={z(64)} c={c.ink} lh={1}>{st.workout} <T k="num" w={800} s={z(64)} c={c.ink}>{wk}</T> · {focus}</T>
             <T k="num" w={500} s={z(40)} c={c.ink} he={false}>{date}</T>
           </View>
         </View>

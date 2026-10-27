@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, View, ViewStyle } from 'react-native';
 import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 import {
-  BOARD_PCTS, CARD_COLORS, CardColor, DATES, DEF, ExId, Lang, SERIES, SeriesKey, THEMES, ThemeKey, WEEKS, PREV, fmt,
+  BOARD_PCTS, CARD_COLORS, CardColor, DATES, DEF, ExId, Lang, SERIES, SeriesKey, THEMES, ThemeKey, WEEKS, WORKOUTS, WorkoutKey, fmt,
 } from './data';
 import { useApp } from './store';
 import { ShareCard } from './ShareCard';
@@ -14,13 +14,17 @@ const scrollStyle = (extra: object = {}) => ({ flex: 1 as const, ...extra });
 
 // ---------------------------------------------------------------- Home
 export function Home() {
-  const { s, t, he, go, lang } = useApp();
-  const segs = Array.from({ length: 12 }, (_, i) => ({ l: i % 2 ? 'B' : 'A', done: i < 7, today: i === 7 }));
-  const parts = [
-    { num: '01', label: s.superset, a: DEF.e1[lang], b: DEF.e2[lang], line: true },
-    { num: '02', label: s.superset, a: DEF.e3[lang], b: DEF.e4[lang], line: true },
-    { num: '03', label: s.superset3, a: s.part3a, b: DEF.e6[lang], line: false },
-  ];
+  const { s, t, go, lang, wk, setWk, focus } = useApp();
+  const segs = Array.from({ length: 12 }, (_, i) => ({ l: i === 7 ? wk : i % 2 ? 'B' : 'A', done: i < 7, today: i === 7 }));
+  const slotName = (sl: ExId | ExId[], choiceLabel?: { he: string; en: string }) =>
+    Array.isArray(sl) ? (choiceLabel ?? { he: '', en: '' })[lang] : DEF[sl][lang];
+  const parts = WORKOUTS[wk].parts.map((p, i) => ({
+    num: '0' + (i + 1),
+    label: i === 2 ? s.superset3 : s.superset,
+    a: slotName(p.slots[0], p.choiceLabel),
+    b: slotName(p.slots[1]),
+    line: i < 2,
+  }));
   return (
     <Page>
       <ScrollView style={scrollStyle()} contentContainerStyle={{ paddingTop: 10, paddingHorizontal: 20, paddingBottom: 16, gap: 22 }}>
@@ -48,15 +52,22 @@ export function Home() {
             ))}
           </View>
         </View>
+        <View style={{ gap: 8 }}>
+          <T w={700} s={15}>{s.pickWorkout}</T>
+          <Segmented
+            value={wk} onChange={(k: WorkoutKey) => setWk(k)} ink={t.ink} bg={t.bg} h={44} size={16}
+            options={(['A', 'B'] as WorkoutKey[]).map(k => ({ key: k, label: `${k} · ${WORKOUTS[k].focus[lang]}` }))}
+          />
+        </View>
         <View style={{ backgroundColor: t.block, borderRadius: 20, paddingTop: 20, paddingHorizontal: 22, paddingBottom: 22, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16 }}>
           <View style={{ gap: 8, flex: 1 }}>
             <T w={500} s={14} c={t.onBlock}>{s.today}</T>
-            <T k="head" s={46} c={t.onBlock} lh={1}>{s.focus}</T>
+            <T k="head" s={46} c={t.onBlock} lh={1}>{focus}</T>
             <T s={14} c={t.onBlock}>{s.meta}</T>
           </View>
           <View style={{ alignItems: 'center', gap: 2 }}>
             <T w={500} s={14} c={t.onBlock}>{s.workout}</T>
-            <T k="num" w={800} s={112} c={t.onBlock} lh={0.8}>B</T>
+            <T k="num" w={800} s={112} c={t.onBlock} lh={0.8}>{wk}</T>
           </View>
         </View>
         <View>
@@ -144,12 +155,12 @@ function ExCard({ id, choiceOf }: { id: ExId; choiceOf?: ExId[] }) {
 }
 
 export function Log() {
-  const { s, t, go, choice, total, frame } = useApp();
-  const parts: { num: string; title: string; items: { id: ExId; choiceOf?: ExId[] }[] }[] = [
-    { num: '01', title: s.superset, items: [{ id: 'e1' }, { id: 'e2' }] },
-    { num: '02', title: s.superset, items: [{ id: 'e3' }, { id: 'e4' }] },
-    { num: '03', title: s.superset3, items: [{ id: choice, choiceOf: ['e5a', 'e5b'] }, { id: 'e6' }] },
-  ];
+  const { s, t, go, choice, total, frame, wk, focus } = useApp();
+  const parts = WORKOUTS[wk].parts.map((p, i) => ({
+    num: '0' + (i + 1),
+    title: i === 2 ? s.superset3 : s.superset,
+    items: p.slots.map(sl => (Array.isArray(sl) ? { id: choice, choiceOf: sl } : { id: sl, choiceOf: undefined as ExId[] | undefined })),
+  }));
   return (
     <Page>
       <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 }}>
@@ -160,7 +171,7 @@ export function Log() {
       </View>
       <ScrollView style={scrollStyle()} contentContainerStyle={{ paddingTop: 4, paddingHorizontal: 20, paddingBottom: 20 }}>
         <T k="head" s={32} lh={1.1}>{s.logTitle}</T>
-        <T s={15} style={{ marginTop: 6 }}>{s.workout} <T k="num" w={800} s={15}>B</T> · {s.focus} · 27.10</T>
+        <T s={15} style={{ marginTop: 6 }}>{s.workout} <T k="num" w={800} s={15}>{wk}</T> · {focus} · 27.10</T>
         {parts.map(p => (
           <View key={p.num} style={{ gap: 10, marginTop: 24 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
@@ -186,10 +197,10 @@ export function Log() {
 
 // ---------------------------------------------------------------- Summary
 export function Summary() {
-  const { s, t, go, total, pct, prs, frame, setShareMode } = useApp();
-  const mx = Math.max(total, PREV);
+  const { s, t, go, total, pct, prs, frame, setShareMode, wk, focus, prev, prevDate } = useApp();
+  const mx = Math.max(total, prev);
   const todayW = `${(total / mx) * 100}%` as const;
-  const prevW = `${(PREV / mx) * 100}%` as const;
+  const prevW = `${(prev / mx) * 100}%` as const;
   const pctStr = (pct >= 0 ? '+' : '−') + Math.abs(pct) + '%';
   return (
     <Page bg={t.sumBg} ink={t.sumInk}>
@@ -200,7 +211,7 @@ export function Summary() {
         </Btn>
       </View>
       <ScrollView style={scrollStyle()} contentContainerStyle={{ paddingTop: 4, paddingHorizontal: 20, paddingBottom: 16 }}>
-        <T k="head" s={32} lh={1.1} c={t.sumInk}>{s.workout} <T k="num" w={800} s={32} c={t.sumInk}>B</T> · {s.focus}</T>
+        <T k="head" s={32} lh={1.1} c={t.sumInk}>{s.workout} <T k="num" w={800} s={32} c={t.sumInk}>{wk}</T> · {focus}</T>
         <T s={15} c={t.sumInk} style={{ marginTop: 6 }}>{s.dateFull}</T>
         <T w={500} s={16} c={t.sumInk} style={{ marginTop: 28 }}>{s.totalLabel}</T>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 4 }}>
@@ -209,7 +220,7 @@ export function Summary() {
         </View>
         <View style={{ backgroundColor: t.sumBlock, borderRadius: 18, paddingTop: 16, paddingHorizontal: 18, paddingBottom: 18, marginTop: 22, gap: 12 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-            <T w={500} s={15} c={t.sumOnBlock}>{s.vs1} <T k="num" w={800} s={15} c={t.sumOnBlock}>B</T> {s.vs2}</T>
+            <T w={500} s={15} c={t.sumOnBlock}>{s.vs1} <T k="num" w={800} s={15} c={t.sumOnBlock}>{wk}</T> {s.vs2}</T>
             <T k="num" w={800} s={30} lh={1} c={t.sumOnBlock} ltr>{pctStr}</T>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -218,9 +229,9 @@ export function Summary() {
             <T k="num" w={500} s={14} c={t.sumOnBlock} style={{ width: 50, textAlign: 'right' }}>{fmt(total)}</T>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <T k="num" w={500} s={13} c={t.sumOnBlock} style={{ width: 42 }}>20.10</T>
+            <T k="num" w={500} s={13} c={t.sumOnBlock} style={{ width: 42 }}>{prevDate}</T>
             <View style={{ flex: 1, height: 12 }}><View style={{ height: '100%', width: prevW, borderWidth: 1.5, borderColor: t.sumOnBlock, borderRadius: 3 }} /></View>
-            <T k="num" w={500} s={14} c={t.sumOnBlock} style={{ width: 50, textAlign: 'right' }}>7,530</T>
+            <T k="num" w={500} s={14} c={t.sumOnBlock} style={{ width: 50, textAlign: 'right' }}>{fmt(prev)}</T>
           </View>
         </View>
         {prs.length > 0 && (
@@ -325,12 +336,13 @@ export function Share() {
 
 // ---------------------------------------------------------------- Progress
 function Chart({ k }: { k: SeriesKey }) {
-  const { t, he } = useApp();
+  const { t } = useApp();
   const ser = SERIES[k];
   const Wd = 353, H = 170, top = 30, bot = 30, px = 16;
   const v = ser.w, n = v.length;
   const mn = Math.min(...v), mx = Math.max(...v), rg = mx - mn || 1;
-  const xAt = (i: number) => (he ? Wd - px - (i * (Wd - 2 * px)) / (n - 1) : px + (i * (Wd - 2 * px)) / (n - 1));
+  // Charts read left to right in every language: oldest on the left, newest on the right.
+  const xAt = (i: number) => px + (i * (Wd - 2 * px)) / (n - 1);
   const pts = v.map((x, i) => [xAt(i), top + ((mx - x) / rg) * (H - top - bot)]);
   const last = n - 1;
   return (
@@ -394,7 +406,7 @@ export function Progress() {
             <T k="num" w={800} s={15} c={t.accText} ltr>{'+' + fmt(ser.w[ser.w.length - 1] - ser.w[0])}</T> {s.gain}
           </T>
         </View>
-        <View style={{ marginTop: 14 }}><Chart k={chartEx} /></View>
+        <View style={{ marginTop: 14, direction: 'ltr' } as ViewStyle}><Chart k={chartEx} /></View>
         <T w={700} s={15} style={{ marginTop: 22 }}>{s.recent}</T>
         {hist.map(h => (
           <View key={h.d} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: t.ink }}>

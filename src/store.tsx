@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import {
-  CardColor, DEF, ExId, INITIAL_EX, Lang, PREV, S, SeriesKey, Strings, THEMES, Theme, ThemeKey, fmt,
+  CardColor, DEFAULT_CHOICE, DEF, ExId, INITIAL_EX, Lang, S, SeriesKey, Strings, THEMES, Theme, ThemeKey,
+  WORKOUTS, WorkoutKey, fmt, workoutIds,
 } from './data';
 
 export type Screen = 'home' | 'log' | 'summary' | 'share' | 'progress' | 'board' | 'settings';
@@ -13,6 +14,7 @@ type Ctx = {
   frame: boolean;
   ex: Record<ExId, { w: number; r: number }>;
   bump: (id: ExId, key: 'w' | 'r', d: number) => void;
+  wk: WorkoutKey; setWk: (w: WorkoutKey) => void; focus: string; prev: number; prevDate: string;
   choice: ExId; setChoice: (id: ExId) => void;
   ids: ExId[]; total: number; pct: number;
   prs: { id: ExId; name: string; w: string; delta: string }[];
@@ -33,7 +35,8 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
   const [themeKey, setThemeRaw] = useState<ThemeKey>('red');
   const [screen, setScreen] = useState<Screen>('home');
   const [ex, setEx] = useState(INITIAL_EX);
-  const [choice, setChoice] = useState<ExId>('e5a');
+  const [wk, setWk] = useState<WorkoutKey>('B');
+  const [choices, setChoices] = useState(DEFAULT_CHOICE);
   const [chartEx, setChartEx] = useState<SeriesKey>('rdl');
   const [hidden, setHidden] = useState(false);
   const [shareMode, setShareMode] = useState<'full' | 'clear'>('full');
@@ -62,15 +65,19 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
   }, []);
 
   const value = useMemo<Ctx>(() => {
-    const ids: ExId[] = ['e1', 'e2', 'e3', 'e4', choice, 'e6'];
+    const choice = choices[wk];
+    const { prev, prevDate } = WORKOUTS[wk];
+    const ids = workoutIds(wk, choice);
     const total = ids.reduce((a, id) => a + ex[id].w * ex[id].r * 3, 0);
-    const pct = Math.round((total / PREV - 1) * 100);
+    const pct = Math.round((total / prev - 1) * 100);
     const prs = ids
       .filter(id => ex[id].w > DEF[id].lw)
       .sort((a, b) => ex[b].w / DEF[b].lw - ex[a].w / DEF[a].lw)
       .map(id => ({ id, name: DEF[id][lang], w: fmt(ex[id].w), delta: '+' + fmt(ex[id].w - DEF[id].lw) }));
     return {
-      lang, he, s, t, themeKey, screen, frame, ex, bump, choice, setChoice, ids, total, pct, prs,
+      lang, he, s, t, themeKey, screen, frame, ex, bump, choice, ids, total, pct, prs,
+      wk, setWk, focus: WORKOUTS[wk].focus[lang], prev, prevDate,
+      setChoice: (id: ExId) => setChoices(c => ({ ...c, [wk]: id })),
       setLang: (l: Lang) => { setLangRaw(l); setCardLang(null); },
       setTheme: (k: ThemeKey) => { setThemeRaw(k); setCardColor(null); },
       go: setScreen,
@@ -82,7 +89,7 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
       clearInk, setClearInk,
       toast, showToast,
     };
-  }, [lang, he, s, t, themeKey, screen, frame, ex, bump, choice, chartEx, hidden, shareMode,
+  }, [lang, he, s, t, themeKey, screen, frame, ex, bump, wk, choices, chartEx, hidden, shareMode,
       cardColorRaw, cardLangRaw, clearInk, toast, showToast]);
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
