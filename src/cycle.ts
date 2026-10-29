@@ -104,3 +104,20 @@ export async function deleteExercise(id: string): Promise<string | null> {
   const { error } = await supabase.from('exercises').delete().eq('id', id);
   return error ? error.message : null;
 }
+
+export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+
+/** Uploads an exercise video to storage and returns its public link. Staff only (the database enforces it). */
+export async function uploadExerciseVideo(exId: string, uri: string, mime?: string | null): Promise<{ url: string | null; error: string | null }> {
+  try {
+    const blob = await (await fetch(uri)).blob();
+    const type = mime || blob.type || 'video/mp4';
+    const ext = type.includes('quicktime') ? 'mov' : type.includes('webm') ? 'webm' : type.includes('3gpp') ? '3gp' : 'mp4';
+    const path = `${exId}/${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from('exercise-videos').upload(path, blob, { contentType: type });
+    if (error) return { url: null, error: error.message };
+    return { url: supabase.storage.from('exercise-videos').getPublicUrl(path).data.publicUrl, error: null };
+  } catch (e) {
+    return { url: null, error: e instanceof Error ? e.message : String(e) };
+  }
+}

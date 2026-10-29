@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Modal, ScrollView, TextInput, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useApp } from './store';
 import { useAuth } from './auth';
 import { Btn, Page, Segmented, T } from './ui';
 import { Field } from './screens';
 import { CyclePart, CycleWorkout, ExerciseRow, PART_NAME, PartKind, VARIANT_NAME, Variant, WorkoutKey } from './data';
 import {
-  CycleDetail, CycleListItem, TRACKED, WORKOUT_KEYS, activateCycle, cloneCycle, deleteCycle, deleteExercise,
-  listCycles, loadCycle, loadExercises, saveCycle, saveExercise,
+  CycleDetail, CycleListItem, MAX_VIDEO_BYTES, TRACKED, WORKOUT_KEYS, activateCycle, cloneCycle, deleteCycle, deleteExercise,
+  listCycles, loadCycle, loadExercises, saveCycle, saveExercise, uploadExerciseVideo,
 } from './cycle';
 
 const num = (v: string) => { const n = parseFloat(v.replace(',', '.')); return isNaN(n) ? 0 : n; };
@@ -250,6 +251,51 @@ function CycleEditor({ id, onBack }: { id: string; onBack: () => void }) {
   );
 }
 
+/** Record a video with the camera, or pick one from the gallery. The file goes to storage and the link fills the field. */
+function VideoButtons({ exId, hasVideo, onUrl }: { exId: string; hasVideo: boolean; onUrl: (url: string | null) => void }) {
+  const { s, t, showToast } = useApp();
+  const st = useStyles();
+  const [busy, setBusy] = useState(false);
+
+  const send = async (result: ImagePicker.ImagePickerResult) => {
+    if (result.canceled) return;
+    const a = result.assets[0];
+    if ((a.fileSize ?? 0) > MAX_VIDEO_BYTES) { showToast(s.videoTooBig); return; }
+    setBusy(true);
+    const r = await uploadExerciseVideo(exId, a.uri, a.mimeType);
+    setBusy(false);
+    if (r.error || !r.url) { showToast(`${s.saveFailed}: ${r.error}`); return; }
+    onUrl(r.url);
+    showToast(s.videoUploaded);
+  };
+  const record = async () => {
+    if (busy) return;
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) { showToast(s.noCamera); return; }
+    await send(await ImagePicker.launchCameraAsync({
+      mediaTypes: 'videos', videoMaxDuration: 60, videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
+    }));
+  };
+  const pick = async () => {
+    if (busy) return;
+    await send(await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], videoMaxDuration: 60 }));
+  };
+
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+      <Btn onPress={record} style={st.small}><T w={700} s={14}>{s.recordVideo}</T></Btn>
+      <Btn onPress={pick} style={st.small}><T w={700} s={14}>{s.pickVideo}</T></Btn>
+      {busy && <T s={13}>{s.uploading}</T>}
+      {hasVideo && !busy && (
+        <>
+          <T w={500} s={13} c={t.accText}>{s.hasVideo}</T>
+          <Btn onPress={() => onUrl(null)} style={{ height: 34, justifyContent: 'center' }}><T w={700} s={13} c={t.accText}>{s.removeVideo}</T></Btn>
+        </>
+      )}
+    </View>
+  );
+}
+
 function Library() {
   const { s, t, lang, showToast, reloadCycle } = useApp();
   const st = useStyles();
@@ -287,6 +333,7 @@ function Library() {
             <Field label={s.fNameEn} value={e.en} onChange={v => patch(e.id, x => ({ ...x, en: v }))} />
           </View>
           <Field label={s.videoLink} value={e.video_url ?? ''} onChange={v => patch(e.id, x => ({ ...x, video_url: v }))} />
+          <VideoButtons exId={e.id} hasVideo={!!e.video_url} onUrl={url => patch(e.id, x => ({ ...x, video_url: url }))} />
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
             <Field num label={s.stepKg} value={e.step} onChange={v => patch(e.id, x => ({ ...x, step: num(v) }))} />
             <Btn
