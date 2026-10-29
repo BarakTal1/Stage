@@ -1,13 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Gender, useAuth } from './auth';
 import { loadLists, saveEquiv, saveRanks, saveRules } from './lists';
+import { loadActiveCycle } from './cycle';
 import {
   EQUIV_DEFAULT, EquivItem, INITIAL_POINTS, MOCK_STREAK_WEEKS, RANKS_DEFAULT, RANKS_FEMALE_DEFAULT, RULES_DEFAULT, Rank, RuleKey, pickEquiv, rankFor,
-  CardColor, DEFAULT_VARIANT, DEF, ExId, Intensity, Lang, S, SeriesKey, SetRow, Strings, THEMES, Theme, ThemeKey,
+  applyCycle, CardColor, DEFAULT_VARIANT, DEF, ExId, Intensity, Lang, S, SeriesKey, SetRow, Strings, THEMES, Theme, ThemeKey,
   Period, Role, Variant, WORKOUTS, WorkoutKey, fmt, initialSets, repRange, workoutIds,
 } from './data';
 
-export type Screen = 'home' | 'log' | 'summary' | 'share' | 'progress' | 'board' | 'settings' | 'coach' | 'admin' | 'profile';
+export type Screen = 'home' | 'log' | 'summary' | 'share' | 'progress' | 'board' | 'settings' | 'coach' | 'admin' | 'profile' | 'cycles';
 export const TAB_SCREENS: Screen[] = ['home', 'progress', 'board', 'settings'];
 
 type Ctx = {
@@ -47,6 +48,8 @@ type Ctx = {
   cardLang: Lang; setCardLang: (l: Lang) => void;
   clearInk: 'light' | 'dark'; setClearInk: (i: 'light' | 'dark') => void;
   toast: string | null; showToast: (msg: string) => void;
+  /** Loads the active cycle from the database into the app. */
+  reloadCycle: () => Promise<void>;
 };
 
 const AppCtx = createContext<Ctx>(null as unknown as Ctx);
@@ -162,6 +165,16 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
     return () => { live = false; };
   }, [userId]);
 
+  const [cycleVersion, setCycleVersion] = useState(0);
+  const reloadCycle = useCallback(async () => {
+    const r = await loadActiveCycle();
+    if (!r) return;
+    applyCycle(r.exercises, r.cycle.workouts);
+    setEx(initialSets());
+    setCycleVersion(v => v + 1);
+  }, []);
+  useEffect(() => { if (userId) reloadCycle(); }, [userId, reloadCycle]);
+
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const persist = useCallback((name: string, run: () => Promise<string | null>) => {
     if (!isAdmin) return;
@@ -186,7 +199,7 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
     const pct = Math.round((total / prev - 1) * 100);
     const top = (id: ExId) => Math.max(...ex[id].map(row => row.w));
     const prs = ids
-      .filter(id => top(id) > DEF[id].lw)
+      .filter(id => DEF[id].lw > 0 && top(id) > DEF[id].lw)
       .sort((a, b) => top(b) / DEF[b].lw - top(a) / DEF[a].lw)
       .map(id => ({ id, name: DEF[id][lang], w: fmt(top(id)), delta: '+' + fmt(top(id) - DEF[id].lw) }));
     return {
@@ -221,9 +234,9 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
       cardColor: cardColorRaw ?? t.card, setCardColor,
       cardLang: cardLangRaw ?? lang, setCardLang,
       clearInk, setClearInk,
-      toast, showToast,
+      toast, showToast, reloadCycle,
     };
-  }, [lang, he, s, t, themeKey, screen, frame, ex, bump, setWeight, intensity, setIntensity, resolve, swapEx, rangeFor, wk, variants, chartEx, hidden, period, role, isAdmin, photo, equivItems, ranks, rankLists, rules, setEquivItems, setRankList, setRules, roll, points, earned, rankUp, award, shareMode,
+  }, [cycleVersion, reloadCycle, lang, he, s, t, themeKey, screen, frame, ex, bump, setWeight, intensity, setIntensity, resolve, swapEx, rangeFor, wk, variants, chartEx, hidden, period, role, isAdmin, photo, equivItems, ranks, rankLists, rules, setEquivItems, setRankList, setRules, roll, points, earned, rankUp, award, shareMode,
       cardColorRaw, cardLangRaw, clearInk, toast, showToast]);
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

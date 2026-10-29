@@ -7,12 +7,12 @@ export type CardColor = 'red' | 'brown' | 'orange';
 export const fmt = (n: number) =>
   Number(n).toLocaleString('en-US', { maximumFractionDigits: 1 });
 
-export type ExId =
-  | 'e1' | 'e2' | 'e3' | 'e4' | 'e5a' | 'e5b' | 'e6'
-  | 'a1' | 'a2' | 'a3' | 'a4' | 'a5a' | 'a5b' | 'a6'
-  | 'g1' | 'g2' | 'l1' | 'l2' | 'l3' | 'l4';
+/** The id of an exercise in the library. The studio adds exercises in the cycle builder. */
+export type ExId = string;
 
-export const DEF: Record<ExId, { he: string; en: string; lw: number; lr: number; step: number }> = {
+export type ExDef = { he: string; en: string; lw: number; lr: number; step: number; video?: string | null };
+
+export const DEF: Record<ExId, ExDef> = {
   e1: { he: 'פולדאון בכבל באחיזה רחבה', en: 'Wide-grip cable lat pulldown', lw: 55, lr: 10, step: 2.5 },
   e2: { he: 'חתירה בכבל בישיבה', en: 'Seated cable row', lw: 52.5, lr: 10, step: 2.5 },
   e3: { he: 'דדליפט רומני עם מוט', en: 'Barbell Romanian deadlift', lw: 75, lr: 8, step: 2.5 },
@@ -41,6 +41,9 @@ export const DEF: Record<ExId, { he: string; en: string; lw: number; lr: number;
   l4: { he: 'הרמות תאומים בעמידה', en: 'Standing calf raise', lw: 40, lr: 15, step: 2.5 },
 };
 
+/** The "last time" mock values, kept for the exercises of the first cycle. Real history comes later. */
+const MOCK_HISTORY: Record<ExId, { lw: number; lr: number }> = Object.fromEntries(Object.entries(DEF).map(([id, d]) => [id, { lw: d.lw, lr: d.lr }]));
+
 export const INITIAL_EX: Record<ExId, { w: number; r: number }> = {
   e1: { w: 57.5, r: 10 }, e2: { w: 52.5, r: 10 }, e3: { w: 80, r: 8 }, e4: { w: 26, r: 10 },
   e5a: { w: 30, r: 12 }, e5b: { w: 14, r: 12 }, e6: { w: 20, r: 15 },
@@ -52,17 +55,25 @@ export const INITIAL_EX: Record<ExId, { w: number; r: number }> = {
 
 /** Placeholder guidance video: a YouTube search for the exercise. Replace with the studio's own videos. */
 export const videoUrl = (id: ExId) =>
-  'https://www.youtube.com/results?search_query=' + encodeURIComponent(DEF[id].en + ' form');
+  DEF[id].video || 'https://www.youtube.com/results?search_query=' + encodeURIComponent(DEF[id].en + ' form');
 
-export const ALL_IDS = Object.keys(DEF) as ExId[];
+/** All exercise ids. `applyCycle` replaces the content, so keep the same array. */
+export const ALL_IDS: ExId[] = Object.keys(DEF);
 
 export const SETS = 3;
 export type SetRow = { w: number; r: number };
 
+/** The start values of an exercise: the mock values, or zero weight and the lowest reps of its part. Reps stay inside the part range. */
+function startRow(id: ExId): SetRow {
+  const [lo, hi] = repRangeAny(id);
+  const base = INITIAL_EX[id] ?? { w: 0, r: lo };
+  return { w: base.w, r: Math.min(hi, Math.max(lo, base.r)) };
+}
+
 /** Every exercise starts with the same weight and reps in all of its sets. */
 export const initialSets = (): Record<ExId, SetRow[]> =>
   Object.fromEntries(
-    (Object.keys(INITIAL_EX) as ExId[]).map(id => [id, Array.from({ length: SETS }, () => ({ ...INITIAL_EX[id] }))]),
+    Object.keys(DEF).map(id => [id, Array.from({ length: SETS }, () => ({ ...startRow(id) }))]),
   ) as Record<ExId, SetRow[]>;
 
 export type WorkoutKey = 'A' | 'B' | 'F';
@@ -78,8 +89,8 @@ type Name = { he: string; en: string };
 export type Part = {
   kind: PartKind;
   names?: Name[];
-  slots?: [ExId, ExId];
-  variants?: Record<Variant, [ExId, ExId]>;
+  slots?: ExId[];
+  variants?: Record<Variant, ExId[]>;
   reps?: [number, number];
 };
 
@@ -160,6 +171,48 @@ export function repRange(wk: WorkoutKey, id: ExId): [number, number] {
   return part?.reps ?? [1, 30];
 }
 
+/** The rep range of the first part that holds the exercise, in any workout. */
+function repRangeAny(id: ExId): [number, number] {
+  for (const wk of Object.keys(WORKOUTS) as WorkoutKey[]) {
+    const r = repRange(wk, id);
+    if (r[0] !== 1 || r[1] !== 30) return r;
+  }
+  return [1, 30];
+}
+
+/** The cycle as the database stores it. */
+export type ExerciseRow = { id: string; he: string; en: string; video_url: string | null; step: number };
+export type CycleItem = { variant: Variant | null; position: number; exercise_id: string };
+export type CyclePart = { kind: PartKind; position: number; reps_min: number | null; reps_max: number | null; items: CycleItem[] };
+export type CycleWorkout = { key: WorkoutKey; focus_he: string; focus_en: string; parts: CyclePart[] };
+
+/**
+ * Replaces the exercise library and the workouts with the active cycle from the database.
+ * The data lives in module objects, so the screens read it at render time. The store re-renders after the call.
+ */
+export function applyCycle(exercises: ExerciseRow[], workouts: CycleWorkout[]) {
+  for (const id of Object.keys(DEF)) delete DEF[id];
+  for (const e of exercises) {
+    const old = MOCK_HISTORY[e.id];
+    DEF[e.id] = { he: e.he, en: e.en, step: Number(e.step), video: e.video_url, lw: old?.lw ?? 0, lr: old?.lr ?? 0 };
+  }
+  ALL_IDS.length = 0;
+  ALL_IDS.push(...Object.keys(DEF));
+  for (const w of workouts) {
+    const parts: Part[] = [...w.parts].sort((a, b) => a.position - b.position).map(p => {
+      const items = [...p.items].filter(i => DEF[i.exercise_id]).sort((a, b) => a.position - b.position);
+      const reps = p.reps_min != null && p.reps_max != null ? ([p.reps_min, p.reps_max] as [number, number]) : undefined;
+      if (p.kind === 'warmup' || p.kind === 'abs') return { kind: p.kind, names: items.map(i => ({ he: DEF[i.exercise_id].he, en: DEF[i.exercise_id].en })) };
+      if (p.kind === 'last') {
+        const of = (v: Variant) => items.filter(i => i.variant === v).map(i => i.exercise_id);
+        return { kind: p.kind, variants: { upper: of('upper'), lower: of('lower') }, reps };
+      }
+      return { kind: p.kind, slots: items.map(i => i.exercise_id), reps };
+    });
+    WORKOUTS[w.key] = { focus: { he: w.focus_he, en: w.focus_en }, prev: WORKOUTS[w.key]?.prev ?? 0, prevDate: WORKOUTS[w.key]?.prevDate ?? '', parts };
+  }
+}
+
 export type Intensity = 'easy' | 'right' | 'hard';
 export const INTENSITIES: { key: Intensity; he: string; en: string }[] = [
   { key: 'easy', he: 'קל', en: 'Easy' },
@@ -178,7 +231,7 @@ export const S = {
     add: 'הוספה', remove: 'מחיקה', fHeOne: 'עברית, יחיד', fHeMany: 'עברית, רבים', fEnOne: 'אנגלית, יחיד', fEnMany: 'אנגלית, רבים',
     fKg: 'משקל של אחד (ק״ג)', fNameHe: 'שם בעברית', fNameEn: 'שם באנגלית', fMin: 'מינימום נקודות', equivHint: 'הרשימה בוחרת פריט אקראי בכל פעם.',
     role: 'תצוגה', roleTrainee: 'מתאמן', roleCoach: 'מאמן', roleNote: 'תצוגת מאמן מוסיפה את מסך המתאמנים ואת החלפת התרגילים.',
-    roleAdmin: 'מנהל', email: 'אימייל', password: 'סיסמה', signIn: 'כניסה', signUp: 'יצירת חשבון', toSignUp: 'אין לך חשבון? יצירת חשבון', toSignIn: 'יש לך חשבון? כניסה', signOut: 'יציאה', checkEmail: 'שלחנו מייל לאישור. אשר את הכתובת ואז היכנס.', badLogin: 'אימייל או סיסמה שגויים.', loginNote: 'הכניסה מיועדת למתאמני הסטודיו.', signedInAs: 'מחובר כ-', saveFailed: 'השמירה נכשלה', myDetails: 'הפרטים שלי', fName: 'שם', gender: 'מגדר', male: 'גבר', female: 'אישה', birthYear: 'שנת לידה', heightCm: 'גובה (ס״מ)', weightKg: 'משקל גוף (ק״ג)', optional: 'לא חובה', saveDetails: 'שמירה', detailsNote: 'הפרטים נראים רק לך ולמאמנים. הדרגות שלך נקבעות לפי המגדר.', detailsTitle: 'ספר לנו עליך', ranksMale: 'דרגות גברים', ranksFemale: 'דרגות נשים', detailsSaved: 'נשמר', badDetails: 'בדוק את הפרטים שהוזנו.',
+    roleAdmin: 'מנהל', email: 'אימייל', password: 'סיסמה', signIn: 'כניסה', signUp: 'יצירת חשבון', toSignUp: 'אין לך חשבון? יצירת חשבון', toSignIn: 'יש לך חשבון? כניסה', signOut: 'יציאה', checkEmail: 'שלחנו מייל לאישור. אשר את הכתובת ואז היכנס.', badLogin: 'אימייל או סיסמה שגויים.', loginNote: 'הכניסה מיועדת למתאמני הסטודיו.', signedInAs: 'מחובר כ-', saveFailed: 'השמירה נכשלה', myDetails: 'הפרטים שלי', fName: 'שם', gender: 'מגדר', male: 'גבר', female: 'אישה', birthYear: 'שנת לידה', heightCm: 'גובה (ס״מ)', weightKg: 'משקל גוף (ק״ג)', optional: 'לא חובה', saveDetails: 'שמירה', detailsNote: 'הפרטים נראים רק לך ולמאמנים. הדרגות שלך נקבעות לפי המגדר.', detailsTitle: 'ספר לנו עליך', ranksMale: 'דרגות גברים', ranksFemale: 'דרגות נשים', detailsSaved: 'נשמר', badDetails: 'בדוק את הפרטים שהוזנו.', cycleBuilder: 'בניית מחזור', tabCycles: 'מחזורים', tabLibrary: 'תרגילים', activeTag: 'פעיל', editBtn: 'עריכה', duplicate: 'שכפול', activateBtn: 'הפעלה', deleteBtn: 'מחיקה', confirmDelete: 'לחץ שוב למחיקה', newCycle: 'מחזור חדש (עותק של הפעיל)', focusLabel: 'מיקוד האימון', repsFrom: 'חזרות מ-', repsTo: 'עד', addExercise: 'הוספת תרגיל', searchEx: 'חיפוש תרגיל', videoLink: 'קישור לסרטון', stepKg: 'קפיצת משקל (ק״ג)', saveCycle: 'שמירת מחזור', saveLib: 'שמירת התרגילים', cycleActivated: 'המחזור הופעל', noExercises: 'אין תרגילים', loading: 'טוען…', liveNote: 'המחזור הזה פעיל. שמירה משנה את האימון של כל המתאמנים.',
     coachTitle: 'המתאמנים שלי', coachAll: 'כולם', coachAttention: 'דורשים תשומת לב', lastWorkout: 'אימון אחרון', daysAgo: 'לפני {n} ימים', today1: 'אתמול', perWeek: 'אימונים בשבוע', streakWeeks: 'שבועות ברצף', inactiveTag: 'לא התאמן {n} ימים', raiseTag: 'כדאי להעלות', raiseNote: 'הצעה בלבד. המאמן מחליט. המשקל לא השתנה ב-3 אימונים.', weightsTitle: 'משקלים', since: 'מאז תחילת ספטמבר', back: 'חזרה', none: 'אין מתאמנים להצגה',
     dateLong: 'יום שלישי, 27 באוקטובר', hello: 'בוקר טוב', cycle: 'מחזור אוקטובר', cycleCount: 'מתוך 12 הושלמו',
     today: 'האימון של היום', focus: 'משיכה', meta: '6 חלקים · כ־50 דקות', workout: 'אימון',
@@ -209,7 +262,7 @@ export const S = {
     add: 'Add', remove: 'Delete', fHeOne: 'Hebrew, one', fHeMany: 'Hebrew, many', fEnOne: 'English, one', fEnMany: 'English, many',
     fKg: 'Weight of one (kg)', fNameHe: 'Hebrew name', fNameEn: 'English name', fMin: 'Minimum points', equivHint: 'The list picks a random item each time.',
     role: 'View', roleTrainee: 'Trainee', roleCoach: 'Coach', roleNote: 'Coach view adds the trainees screen and exercise swaps.',
-    roleAdmin: 'Admin', email: 'Email', password: 'Password', signIn: 'Sign in', signUp: 'Create account', toSignUp: 'No account? Create one', toSignIn: 'Have an account? Sign in', signOut: 'Sign out', checkEmail: 'We sent a confirmation email. Confirm the address, then sign in.', badLogin: 'Wrong email or password.', loginNote: 'Sign-in is for studio trainees.', signedInAs: 'Signed in as ', saveFailed: 'Save failed', myDetails: 'My details', fName: 'Name', gender: 'Gender', male: 'Man', female: 'Woman', birthYear: 'Birth year', heightCm: 'Height (cm)', weightKg: 'Body weight (kg)', optional: 'optional', saveDetails: 'Save', detailsNote: 'Only you and the coaches see these details. Your ranks follow your gender.', detailsTitle: 'Tell us about you', ranksMale: 'Ranks for men', ranksFemale: 'Ranks for women', detailsSaved: 'Saved', badDetails: 'Check the values you entered.',
+    roleAdmin: 'Admin', email: 'Email', password: 'Password', signIn: 'Sign in', signUp: 'Create account', toSignUp: 'No account? Create one', toSignIn: 'Have an account? Sign in', signOut: 'Sign out', checkEmail: 'We sent a confirmation email. Confirm the address, then sign in.', badLogin: 'Wrong email or password.', loginNote: 'Sign-in is for studio trainees.', signedInAs: 'Signed in as ', saveFailed: 'Save failed', myDetails: 'My details', fName: 'Name', gender: 'Gender', male: 'Man', female: 'Woman', birthYear: 'Birth year', heightCm: 'Height (cm)', weightKg: 'Body weight (kg)', optional: 'optional', saveDetails: 'Save', detailsNote: 'Only you and the coaches see these details. Your ranks follow your gender.', detailsTitle: 'Tell us about you', ranksMale: 'Ranks for men', ranksFemale: 'Ranks for women', detailsSaved: 'Saved', badDetails: 'Check the values you entered.', cycleBuilder: 'Cycle builder', tabCycles: 'Cycles', tabLibrary: 'Exercises', activeTag: 'Active', editBtn: 'Edit', duplicate: 'Duplicate', activateBtn: 'Activate', deleteBtn: 'Delete', confirmDelete: 'Tap again to delete', newCycle: 'New cycle (copy of the active one)', focusLabel: 'Workout focus', repsFrom: 'Reps from', repsTo: 'to', addExercise: 'Add exercise', searchEx: 'Search exercise', videoLink: 'Video link', stepKg: 'Weight step (kg)', saveCycle: 'Save cycle', saveLib: 'Save exercises', cycleActivated: 'Cycle activated', noExercises: 'No exercises', loading: 'Loading…', liveNote: 'This cycle is active. Saving changes the workout for all trainees.',
     coachTitle: 'My trainees', coachAll: 'All', coachAttention: 'Needs attention', lastWorkout: 'Last workout', daysAgo: '{n} days ago', today1: 'Yesterday', perWeek: 'Workouts per week', streakWeeks: 'weeks in a row', inactiveTag: 'Away {n} days', raiseTag: 'Ready to raise', raiseNote: 'A suggestion only. The coach decides. The weight did not change for 3 sessions.', weightsTitle: 'Weights', since: 'since early September', back: 'Back', none: 'No trainees to show',
     dateLong: 'Tuesday, 27 October', hello: 'Good morning', cycle: 'October cycle', cycleCount: 'of 12 done',
     today: "Today's workout", focus: 'Pull', meta: '6 parts · about 50 min', workout: 'Workout',

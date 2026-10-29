@@ -195,9 +195,11 @@ function ExCard({ orig }: { orig: ExId }) {
       </View>
       {sheet && <SwapSheet orig={orig} onClose={() => setSheet(false)} />}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-        <T s={14}>
-          {s.lastTime} <T k="num" w={500} s={14}>{`${fmt(def.lw)} ${s.kg} × ${def.lr}`}</T>
-        </T>
+        {def.lw > 0 ? (
+          <T s={14}>
+            {s.lastTime} <T k="num" w={500} s={14}>{`${fmt(def.lw)} ${s.kg} × ${def.lr}`}</T>
+          </T>
+        ) : <View />}
         <T s={14}>{s.repRange} <T k="num" w={500} s={14}>{`${lo}–${hi}`}</T></T>
       </View>
       {rows.map((row, i) => (
@@ -209,7 +211,7 @@ function ExCard({ orig }: { orig: ExId }) {
             onDec={() => bump(id, i, 'r', -1)} onInc={() => bump(id, i, 'r', 1)} />
         </View>
       ))}
-      {top > def.lw && (
+      {def.lw > 0 && top > def.lw && (
         <T w={700} s={13} c={t.accText} style={{ alignSelf: 'flex-end' }}>
           {s.upPre} <T k="num" w={800} s={13} c={t.accText}>{fmt(top - def.lw)}</T> {s.kg}
         </T>
@@ -756,7 +758,7 @@ export function RankUp() {
 }
 
 // ---------------------------------------------------------------- Admin (lists the studio edits)
-function Field({ label, value, onChange, num, flex = 1 }: {
+export function Field({ label, value, onChange, num, flex = 1 }: {
   label: string; value: string | number; onChange: (v: string) => void; num?: boolean; flex?: number;
 }) {
   const { t } = useApp();
@@ -883,6 +885,11 @@ export function Settings() {
         {isAdmin && (
           <Btn onPress={() => go('admin')} style={{ marginTop: 14, height: 48, borderRadius: 14, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
             <T w={700} s={16}>{s.admin}</T>
+          </Btn>
+        )}
+        {role === 'coach' && (
+          <Btn onPress={() => go('cycles')} style={{ marginTop: 10, height: 48, borderRadius: 14, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
+            <T w={700} s={16}>{s.cycleBuilder}</T>
           </Btn>
         )}
         <Btn onPress={() => go('profile')} style={{ marginTop: 10, height: 48, borderRadius: 14, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>

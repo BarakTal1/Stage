@@ -7,10 +7,11 @@ import { AppProvider, useApp } from './src/store';
 import { AuthProvider, useAuth } from './src/auth';
 import { Login } from './src/Login';
 import { Details } from './src/Details';
+import { Cycles } from './src/CycleBuilder';
 import { Admin, Board, Coach, Home, Log, Progress, RankUp, Settings, Share, Summary } from './src/screens';
 import { T } from './src/ui';
 
-const SCREENS = { home: Home, log: Log, summary: Summary, share: Share, progress: Progress, board: Board, settings: Settings, coach: Coach, admin: Admin, profile: Details };
+const SCREENS = { home: Home, log: Log, summary: Summary, share: Share, progress: Progress, board: Board, settings: Settings, coach: Coach, admin: Admin, profile: Details, cycles: Cycles };
 
 function Router() {
   const { screen, toast, he, frame, isAdmin } = useApp();

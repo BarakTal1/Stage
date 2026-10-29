@@ -1,0 +1,310 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { Modal, ScrollView, TextInput, View } from 'react-native';
+import { useApp } from './store';
+import { useAuth } from './auth';
+import { Btn, Page, Segmented, T } from './ui';
+import { Field } from './screens';
+import { CyclePart, CycleWorkout, ExerciseRow, PART_NAME, PartKind, VARIANT_NAME, Variant, WorkoutKey } from './data';
+import {
+  CycleDetail, CycleListItem, TRACKED, WORKOUT_KEYS, activateCycle, cloneCycle, deleteCycle, deleteExercise,
+  listCycles, loadCycle, loadExercises, saveCycle, saveExercise,
+} from './cycle';
+
+const num = (v: string) => { const n = parseFloat(v.replace(',', '.')); return isNaN(n) ? 0 : n; };
+
+function useStyles() {
+  const { t } = useApp();
+  return {
+    card: { borderWidth: 1.5, borderColor: t.ink, borderRadius: 14, padding: 12, gap: 8 } as const,
+    wide: { height: 48, borderRadius: 14, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' } as const,
+    small: { height: 34, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' } as const,
+  };
+}
+
+function Header({ onBack }: { onBack: () => void }) {
+  const { s } = useApp();
+  return (
+    <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 }}>
+      <Btn onPress={onBack} style={{ height: 44, paddingHorizontal: 8, justifyContent: 'center' }}>
+        <T w={500} s={16}>{s.back}</T>
+      </Btn>
+    </View>
+  );
+}
+
+/** The studio staff build cycles here: the exercises of each part, rep ranges, and the exercise library with video links. */
+export function Cycles() {
+  const { s, t, go } = useApp();
+  const [tab, setTab] = useState<'cycles' | 'library'>('cycles');
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  if (openId) return <CycleEditor id={openId} onBack={() => setOpenId(null)} />;
+  return (
+    <Page>
+      <Header onBack={() => go('settings')} />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 4, paddingHorizontal: 20, paddingBottom: 24, gap: 12 }} keyboardShouldPersistTaps="handled">
+        <T k="head" s={30} lh={1.1}>{s.cycleBuilder}</T>
+        <Segmented
+          value={tab} onChange={setTab} ink={t.ink} bg={t.bg}
+          options={[{ key: 'cycles', label: s.tabCycles }, { key: 'library', label: s.tabLibrary }]}
+        />
+        {tab === 'cycles' ? <CycleList onOpen={setOpenId} /> : <Library />}
+      </ScrollView>
+    </Page>
+  );
+}
+
+function CycleList({ onOpen }: { onOpen: (id: string) => void }) {
+  const { s, t, lang, showToast, reloadCycle } = useApp();
+  const { profile } = useAuth();
+  const st = useStyles();
+  const isAdmin = profile?.role === 'admin';
+  const [list, setList] = useState<CycleListItem[] | null>(null);
+  const [confirm, setConfirm] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const refresh = useCallback(() => listCycles().then(setList), []);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const run = async (fn: () => Promise<string | null>, ok?: string) => {
+    if (busy) return;
+    setBusy(true);
+    const err = await fn();
+    setBusy(false);
+    if (err) showToast(`${s.saveFailed}: ${err}`);
+    else if (ok) showToast(ok);
+    await refresh();
+  };
+  const active = list?.find(c => c.active);
+
+  return (
+    <View style={{ gap: 10 }}>
+      {!list && <T s={14}>{s.loading}</T>}
+      {list?.map(c => (
+        <View key={c.id} style={st.card}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <T w={700} s={17} style={{ flex: 1 }}>{(lang === 'he' ? c.name_he : c.name_en) || '—'}</T>
+            {c.active && <T w={700} s={13} c={t.accText}>{s.activeTag}</T>}
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <Btn onPress={() => onOpen(c.id)} style={st.small}><T w={700} s={14}>{s.editBtn}</T></Btn>
+            <Btn
+              onPress={() => run(async () => (await cloneCycle(c.id)).error)}
+              style={st.small}><T w={700} s={14}>{s.duplicate}</T></Btn>
+            {isAdmin && !c.active && (
+              <Btn
+                onPress={() => run(async () => { const e = await activateCycle(c.id); if (!e) await reloadCycle(); return e; }, s.cycleActivated)}
+                style={st.small}><T w={700} s={14}>{s.activateBtn}</T></Btn>
+            )}
+            {isAdmin && !c.active && (
+              <Btn
+                onPress={() => (confirm === c.id ? (setConfirm(null), run(() => deleteCycle(c.id))) : setConfirm(c.id))}
+                style={st.small}><T w={700} s={14} c={t.accText}>{confirm === c.id ? s.confirmDelete : s.deleteBtn}</T></Btn>
+            )}
+          </View>
+        </View>
+      ))}
+      {active && (
+        <Btn onPress={() => run(async () => (await cloneCycle(active.id)).error)} style={[st.wide, { backgroundColor: t.acc, borderColor: t.acc }]}>
+          <T w={700} s={16} c={t.onAcc}>+ {s.newCycle}</T>
+        </Btn>
+      )}
+    </View>
+  );
+}
+
+function CycleEditor({ id, onBack }: { id: string; onBack: () => void }) {
+  const { s, t, lang, showToast, reloadCycle } = useApp();
+  const st = useStyles();
+  const [draft, setDraft] = useState<CycleDetail | null>(null);
+  const [exs, setExs] = useState<ExerciseRow[]>([]);
+  const [wk, setWk] = useState<WorkoutKey>('B');
+  const [pick, setPick] = useState<{ kind: PartKind; variant: Variant | null } | null>(null);
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { Promise.all([loadCycle(id), loadExercises()]).then(([c, e]) => { setDraft(c); setExs(e); }); }, [id]);
+  if (!draft) return <Page><Header onBack={onBack} /><T s={14} style={{ padding: 20 }}>{s.loading}</T></Page>;
+
+  const name = (exId: string) => exs.find(e => e.id === exId)?.[lang] ?? exId;
+  const workout = draft.workouts.find(w => w.key === wk) as CycleWorkout;
+  const patchWorkout = (fn: (w: CycleWorkout) => CycleWorkout) =>
+    setDraft(d => (d ? { ...d, workouts: d.workouts.map(w => (w.key === wk ? fn(w) : w)) } : d));
+  const patchPart = (kind: PartKind, fn: (p: CyclePart) => CyclePart) =>
+    patchWorkout(w => ({ ...w, parts: w.parts.map(p => (p.kind === kind ? fn(p) : p)) }));
+
+  const idsOf = (p: CyclePart, v: Variant | null) =>
+    p.items.filter(i => i.variant === v).sort((a, b) => a.position - b.position).map(i => i.exercise_id);
+  const setIds = (kind: PartKind, v: Variant | null, ids: string[]) =>
+    patchPart(kind, p => ({
+      ...p,
+      items: [...p.items.filter(i => i.variant !== v), ...ids.map((exercise_id, position) => ({ variant: v, position, exercise_id }))],
+    }));
+
+  const save = async () => {
+    if (busy) return;
+    const badReps = draft.workouts.some(w => w.parts.some(p => TRACKED.includes(p.kind) && (!p.reps_min || !p.reps_max || p.reps_min < 1 || p.reps_max < p.reps_min)));
+    if (badReps) { showToast(s.badDetails); return; }
+    setBusy(true);
+    const err = await saveCycle(draft);
+    if (!err && draft.active) await reloadCycle();
+    setBusy(false);
+    showToast(err ? `${s.saveFailed}: ${err}` : s.detailsSaved);
+  };
+
+  const group = (p: CyclePart, v: Variant | null) => {
+    const ids = idsOf(p, v);
+    const move = (i: number, d: number) => {
+      const next = [...ids];
+      const j = i + d;
+      if (j < 0 || j >= next.length) return;
+      [next[i], next[j]] = [next[j], next[i]];
+      setIds(p.kind, v, next);
+    };
+    return (
+      <View key={String(v)} style={{ gap: 6 }}>
+        {v && <T w={700} s={14}>{VARIANT_NAME[v][lang]}</T>}
+        {ids.length === 0 && <T s={13}>{s.noExercises}</T>}
+        {ids.map((exId, i) => (
+          <View key={exId + i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <T s={14} lh={1.3} style={{ flex: 1 }}>{name(exId)}</T>
+            <Btn onPress={() => move(i, -1)} style={st.small}><T w={700} s={14}>↑</T></Btn>
+            <Btn onPress={() => move(i, 1)} style={st.small}><T w={700} s={14}>↓</T></Btn>
+            <Btn onPress={() => setIds(p.kind, v, ids.filter((_, k) => k !== i))} style={st.small}><T w={700} s={14} c={t.accText}>✕</T></Btn>
+          </View>
+        ))}
+        <Btn onPress={() => { setQ(''); setPick({ kind: p.kind, variant: v }); }} style={st.small}>
+          <T w={700} s={14}>+ {s.addExercise}</T>
+        </Btn>
+      </View>
+    );
+  };
+
+  const shown = exs.filter(e => !q || e.he.includes(q) || e.en.toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <Page>
+      <Header onBack={onBack} />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 4, paddingHorizontal: 20, paddingBottom: 24, gap: 12 }} keyboardShouldPersistTaps="handled">
+        {draft.active && <T s={13} lh={1.4} c={t.accText}>{s.liveNote}</T>}
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Field label={s.fNameHe} value={draft.name_he} onChange={v => setDraft(d => d && { ...d, name_he: v })} />
+          <Field label={s.fNameEn} value={draft.name_en} onChange={v => setDraft(d => d && { ...d, name_en: v })} />
+        </View>
+        <Segmented
+          value={wk} onChange={setWk} ink={t.ink} bg={t.bg}
+          options={WORKOUT_KEYS.map(k => ({ key: k, label: k }))}
+        />
+        <T w={700} s={15}>{s.focusLabel}</T>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Field label={s.fNameHe} value={workout.focus_he} onChange={v => patchWorkout(w => ({ ...w, focus_he: v }))} />
+          <Field label={s.fNameEn} value={workout.focus_en} onChange={v => patchWorkout(w => ({ ...w, focus_en: v }))} />
+        </View>
+        {workout.parts.map((p, i) => (
+          <View key={p.kind} style={st.card}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
+              <T k="num" w={800} s={20}>{'0' + (i + 1)}</T>
+              <T w={700} s={15} style={{ flex: 1 }}>{PART_NAME[p.kind][lang]}</T>
+            </View>
+            {TRACKED.includes(p.kind) && (
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Field num label={s.repsFrom} value={p.reps_min ?? 0} onChange={v => patchPart(p.kind, x => ({ ...x, reps_min: Math.round(num(v)) }))} />
+                <Field num label={s.repsTo} value={p.reps_max ?? 0} onChange={v => patchPart(p.kind, x => ({ ...x, reps_max: Math.round(num(v)) }))} />
+              </View>
+            )}
+            {p.kind === 'last' ? (['upper', 'lower'] as Variant[]).map(v => group(p, v)) : group(p, null)}
+          </View>
+        ))}
+        <Btn onPress={save} style={[st.wide, { backgroundColor: t.acc, borderColor: t.acc, opacity: busy ? 0.6 : 1 }]}>
+          <T w={700} s={16} c={t.onAcc}>{s.saveCycle}</T>
+        </Btn>
+      </ScrollView>
+      {pick && (
+        <Modal transparent animationType="slide" onRequestClose={() => setPick(null)}>
+          <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
+            <View style={{ backgroundColor: t.bg, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '80%', paddingTop: 18, paddingHorizontal: 20, paddingBottom: 24, gap: 12 }}>
+              <T k="head" s={22} lh={1.15}>{s.addExercise}</T>
+              <TextInput
+                value={q} onChangeText={setQ} placeholder={s.searchEx} placeholderTextColor={t.ink + '88'}
+                style={{ height: 44, borderWidth: 1.5, borderColor: t.ink, borderRadius: 10, paddingHorizontal: 10, color: t.ink, fontSize: 15, fontFamily: 'Heebo_400Regular' }}
+              />
+              <ScrollView style={{ flexGrow: 0 }} keyboardShouldPersistTaps="handled">
+                {shown.map(e => (
+                  <Btn
+                    key={e.id}
+                    onPress={() => {
+                      const part = workout.parts.find(p => p.kind === pick.kind) as CyclePart;
+                      setIds(pick.kind, pick.variant, [...idsOf(part, pick.variant), e.id]);
+                      setPick(null);
+                    }}
+                    style={{ paddingVertical: 14, borderTopWidth: 1, borderTopColor: t.ink }}>
+                    <T w={500} s={15} lh={1.3}>{e[lang]}</T>
+                  </Btn>
+                ))}
+              </ScrollView>
+              <Btn onPress={() => setPick(null)} style={st.wide}><T w={700} s={16}>{s.close}</T></Btn>
+            </View>
+          </View>
+        </Modal>
+      )}
+    </Page>
+  );
+}
+
+function Library() {
+  const { s, t, lang, showToast, reloadCycle } = useApp();
+  const st = useStyles();
+  const [rows, setRows] = useState<ExerciseRow[] | null>(null);
+  const [removed, setRemoved] = useState<string[]>([]);
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { loadExercises().then(setRows); }, []);
+  if (!rows) return <T s={14}>{s.loading}</T>;
+
+  const patch = (id: string, fn: (e: ExerciseRow) => ExerciseRow) => setRows(rows.map(r => (r.id === id ? fn(r) : r)));
+  const save = async () => {
+    if (busy) return;
+    if (rows.some(r => !r.he.trim() || !r.en.trim())) { showToast(s.badDetails); return; }
+    setBusy(true);
+    let err: string | null = null;
+    for (const id of removed) { err = err ?? (await deleteExercise(id)); }
+    for (const r of rows) { err = err ?? (await saveExercise(r)); }
+    if (!err) { setRemoved([]); await reloadCycle(); }
+    setBusy(false);
+    showToast(err ? `${s.saveFailed}: ${err}` : s.detailsSaved);
+  };
+  const shown = rows.filter(e => !q || e.he.includes(q) || e.en.toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <View style={{ gap: 10 }}>
+      <TextInput
+        value={q} onChangeText={setQ} placeholder={s.searchEx} placeholderTextColor={t.ink + '88'}
+        style={{ height: 44, borderWidth: 1.5, borderColor: t.ink, borderRadius: 10, paddingHorizontal: 10, color: t.ink, fontSize: 15, fontFamily: 'Heebo_400Regular' }}
+      />
+      {shown.map(e => (
+        <View key={e.id} style={st.card}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Field label={s.fNameHe} value={e.he} onChange={v => patch(e.id, x => ({ ...x, he: v }))} />
+            <Field label={s.fNameEn} value={e.en} onChange={v => patch(e.id, x => ({ ...x, en: v }))} />
+          </View>
+          <Field label={s.videoLink} value={e.video_url ?? ''} onChange={v => patch(e.id, x => ({ ...x, video_url: v }))} />
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
+            <Field num label={s.stepKg} value={e.step} onChange={v => patch(e.id, x => ({ ...x, step: num(v) }))} />
+            <Btn
+              onPress={() => { setRows(rows.filter(r => r.id !== e.id)); setRemoved(r => [...r, e.id]); }}
+              style={{ height: 42, paddingHorizontal: 10, justifyContent: 'center' }}>
+              <T w={700} s={13} c={t.accText}>{s.deleteBtn}</T>
+            </Btn>
+          </View>
+        </View>
+      ))}
+      <Btn
+        onPress={() => setRows([...rows, { id: 'x' + Date.now().toString(36), he: '', en: '', video_url: null, step: 2.5 }])}
+        style={st.wide}>
+        <T w={700} s={16}>+ {s.addExercise}</T>
+      </Btn>
+      <Btn onPress={save} style={[st.wide, { backgroundColor: t.acc, borderColor: t.acc, opacity: busy ? 0.6 : 1 }]}>
+        <T w={700} s={16} c={t.onAcc}>{s.saveLib}</T>
+      </Btn>
+    </View>
+  );
+}
