@@ -4,10 +4,10 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { Heebo_400Regular, Heebo_500Medium, Heebo_700Bold } from '@expo-google-fonts/heebo';
 import { AppProvider, useApp } from './src/store';
-import { Board, Home, Log, Progress, Settings, Share, Summary } from './src/screens';
+import { Board, Coach, Home, Log, Progress, Settings, Share, Summary } from './src/screens';
 import { T } from './src/ui';
 
-const SCREENS = { home: Home, log: Log, summary: Summary, share: Share, progress: Progress, board: Board, settings: Settings };
+const SCREENS = { home: Home, log: Log, summary: Summary, share: Share, progress: Progress, board: Board, settings: Settings, coach: Coach };
 
 function Router() {
   const { screen, toast, he, frame } = useApp();

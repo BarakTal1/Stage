@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
-import { CARD_STR, CardColor, Lang, DEF, WORKOUTS } from './data';
+import { CARD_STR, CardColor, Lang, DEF, MONTH, WORKOUTS, carsText } from './data';
 import { T, LOGO_BLACK, LOGO_RATIO, LOGO_WHITE } from './ui';
 import { useApp } from './store';
 
@@ -19,14 +19,17 @@ const CLEAR = {
 export function ShareCard({ variant, ink, lang, k }: {
   variant: CardColor | 'clear'; ink: 'light' | 'dark'; lang: Lang; k: number;
 }) {
-  const { total, pct, prs, hidden, wk } = useApp();
+  const { total: workoutTotal, pct: workoutPct, prs, hidden, wk, period, photo } = useApp();
+  const month = period === 'month';
+  const total = month ? MONTH.total : workoutTotal;
+  const pct = month ? MONTH.pct : workoutPct;
   const he = lang === 'he';
   const st = CARD_STR[lang];
   const z = (n: number) => n * k;
 
   // Content rules from the card spec: header + total, then at most two extra elements.
   // Order: records, progress, streak, rank. Rank is dropped when the trainee hides from the board.
-  const cardPrs = prs.slice(0, 2).map(p => ({ name: DEF[p.id][lang], w: p.w }));
+  const cardPrs = (month ? [] : prs).slice(0, 2).map(p => ({ name: DEF[p.id][lang], w: p.w }));
   const extras: string[] = [];
   if (cardPrs.length) extras.push('prs');
   if (pct > 0) extras.push('progress');
@@ -42,6 +45,9 @@ export function ShareCard({ variant, ink, lang, k }: {
   const em = digits * 0.64 + commas * 0.28;
   const focus = WORKOUTS[wk].focus[lang];
   const date = '27.10.2026';
+  const totalLabel = month ? st.totalMonth : st.total;
+  const fromLast = month ? st.fromLastMonth : st.fromLast;
+  const equiv = carsText(total, lang);
 
   const hf = (props: object) => ({ he, ...props });
   const Pill = (c: { children: React.ReactNode; style: ViewStyle }) => (
@@ -58,18 +64,31 @@ export function ShareCard({ variant, ink, lang, k }: {
         <View style={{ flex: 1, paddingTop: z(200), paddingBottom: z(240), paddingHorizontal: z(96) }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: z(40) }}>
             <Image source={LOGO_WHITE} contentFit="contain" style={{ width: z(400), height: z(400) / LOGO_RATIO }} />
-            <T k="num" w={500} s={z(40)} c={c.ink} style={{ paddingTop: z(8) }} he={false}>{date}</T>
+            {photo ? (
+              <Image source={{ uri: photo }} contentFit="cover"
+                style={{ width: z(190), height: z(190), borderRadius: z(95), borderWidth: z(6), borderColor: c.ink }} />
+            ) : (
+              <T k="num" w={500} s={z(40)} c={c.ink} style={{ paddingTop: z(8) }} he={false}>{date}</T>
+            )}
           </View>
-          <View style={{ flexDirection: 'row', gap: z(24), alignItems: 'baseline', marginTop: z(72) }}>
-            <T {...hf({})} k="head" s={z(76)} c={c.ink}>{st.workout} <T k="num" w={800} s={z(76)} c={c.ink}>{wk}</T></T>
-            <T {...hf({})} k="head" s={z(76)} c={c.ink}>·</T>
-            <T {...hf({})} k="head" s={z(76)} c={c.ink}>{focus}</T>
+          <View style={{ flexDirection: 'row', gap: z(24), alignItems: 'baseline', marginTop: z(photo ? 36 : 72) }}>
+            {month ? (
+              <T {...hf({})} k="head" s={z(76)} c={c.ink}>{MONTH.name[lang]}</T>
+            ) : (
+              <>
+                <T {...hf({})} k="head" s={z(76)} c={c.ink}>{st.workout} <T k="num" w={800} s={z(76)} c={c.ink}>{wk}</T></T>
+                <T {...hf({})} k="head" s={z(76)} c={c.ink}>·</T>
+                <T {...hf({})} k="head" s={z(76)} c={c.ink}>{focus}</T>
+              </>
+            )}
           </View>
+          {photo && <T k="num" w={500} s={z(40)} c={c.ink} style={{ marginTop: z(12) }} he={false}>{date}</T>}
           <View style={{ flex: 1, justifyContent: 'center', gap: z(12) }}>
-            <T {...hf({})} k="head" s={z(60)} c={c.ink}>{st.total}</T>
+            <T {...hf({})} k="head" s={z(60)} c={c.ink}>{totalLabel}</T>
             <T k="num" w={800} s={z(numSize)} c={c.num} ltr lh={0.86}
               style={{ textAlign: he ? 'right' : 'left', letterSpacing: z(numSize) * -0.02 }}>{totalStr}</T>
             <T {...hf({})} k="head" s={z(110)} c={c.ink}>{st.kg}</T>
+            <T {...hf({})} w={500} s={z(48)} c={c.ink}>{equiv}</T>
           </View>
           <View style={{ gap: z(36), alignItems: 'flex-start' }}>
             {showPRs && (
@@ -91,7 +110,7 @@ export function ShareCard({ variant, ink, lang, k }: {
             {showProgress && (
               <Pill style={{ gap: z(18), backgroundColor: c.chipBg, paddingVertical: z(22), paddingHorizontal: z(40) }}>
                 <T k="num" w={800} s={z(60)} c={c.chipFg} ltr>{'+' + pct + '%'}</T>
-                <T w={700} s={z(42)} c={c.chipFg} {...hf({})}>{st.fromLast}</T>
+                <T w={700} s={z(42)} c={c.chipFg} {...hf({})}>{fromLast}</T>
               </Pill>
             )}
             {showStreak && (
@@ -122,17 +141,22 @@ export function ShareCard({ variant, ink, lang, k }: {
         <View style={{ gap: z(36), alignSelf: 'stretch' }}>
           <Image source={c.white ? LOGO_WHITE : LOGO_BLACK} contentFit="contain" style={{ width: z(380), height: z(380) / LOGO_RATIO }} />
           <View style={{ gap: z(14) }}>
-            <T {...hf({})} k="head" s={z(64)} c={c.ink} lh={1}>{st.workout} <T k="num" w={800} s={z(64)} c={c.ink}>{wk}</T> · {focus}</T>
+            {month ? (
+              <T {...hf({})} k="head" s={z(64)} c={c.ink} lh={1}>{MONTH.name[lang]}</T>
+            ) : (
+              <T {...hf({})} k="head" s={z(64)} c={c.ink} lh={1}>{st.workout} <T k="num" w={800} s={z(64)} c={c.ink}>{wk}</T> · {focus}</T>
+            )}
             <T k="num" w={500} s={z(40)} c={c.ink} he={false}>{date}</T>
           </View>
         </View>
         <View style={{ flex: 1 }} />
         <View style={{ gap: z(10), marginBottom: z(24) }}>
-          <T {...hf({})} k="head" s={z(56)} c={c.ink}>{st.total}</T>
+          <T {...hf({})} k="head" s={z(56)} c={c.ink}>{totalLabel}</T>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: z(24) }}>
             <T k="num" w={800} s={z(numSize)} c={c.num} ltr lh={0.86} style={{ letterSpacing: z(numSize) * -0.02 }}>{totalStr}</T>
             <T {...hf({})} k="head" s={z(80)} c={c.ink}>{st.kg}</T>
           </View>
+          <T {...hf({})} w={500} s={z(44)} c={c.ink}>{equiv}</T>
         </View>
         {showPRs && (
           <View style={{ alignSelf: 'stretch' }}>
@@ -153,7 +177,7 @@ export function ShareCard({ variant, ink, lang, k }: {
         {showProgress && (
           <Pill style={pill}>
             <T k="num" w={800} s={z(58)} c={c.ink} ltr>{'+' + pct + '%'}</T>
-            <T w={700} s={z(40)} c={c.ink} {...hf({})}>{st.fromLast}</T>
+            <T w={700} s={z(40)} c={c.ink} {...hf({})}>{fromLast}</T>
           </Pill>
         )}
         {showStreak && (

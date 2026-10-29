@@ -109,10 +109,10 @@ export function HomeIndicator({ ink }: { ink: string }) {
 }
 
 export function TabBar() {
-  const { s, t, screen, go, frame } = useApp();
-  const tabs: [Screen, string][] = [
-    ['home', s.tabHome], ['progress', s.tabProgress], ['board', s.tabBoard], ['settings', s.tabSettings],
-  ];
+  const { s, t, screen, go, frame, role } = useApp();
+  const tabs: [Screen, string][] = role === 'coach'
+    ? [['home', s.tabHome], ['coach', s.tabTrainees], ['board', s.tabBoard], ['settings', s.tabSettings]]
+    : [['home', s.tabHome], ['progress', s.tabProgress], ['board', s.tabBoard], ['settings', s.tabSettings]];
   return (
     <View style={{ height: frame ? 84 : 72, borderTopWidth: 1, borderTopColor: t.ink, flexDirection: 'row', paddingHorizontal: 8 }}>
       {tabs.map(([key, label]) => {

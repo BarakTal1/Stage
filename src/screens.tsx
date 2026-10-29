@@ -1,8 +1,10 @@
 import React from 'react';
-import { ScrollView, View, ViewStyle } from 'react-native';
+import { Linking, Modal, ScrollView, TextInput, View, ViewStyle } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 import {
-  BOARD_PCTS, CARD_COLORS, CardColor, DATES, DEF, ExId, Lang, SERIES, SeriesKey, THEMES, ThemeKey, WEEKS, WORKOUTS, WorkoutKey, fmt,
+  BOARDS, BoardKey, CARD_COLORS, CardColor, DATES, DEF, ExId, INTENSITIES, Intensity, Lang, PART_NAME, Part, SERIES, SeriesKey,
+  ALL_IDS, TRAINEES, THEMES, Trainee, ThemeKey, VARIANT_NAME, Variant, WEEKS, WORKOUTS, WorkoutKey, fmt, partIds, readyToRaise, videoUrl,
 } from './data';
 import { useApp } from './store';
 import { ShareCard } from './ShareCard';
@@ -16,14 +18,14 @@ const scrollStyle = (extra: object = {}) => ({ flex: 1 as const, ...extra });
 export function Home() {
   const { s, t, go, lang, wk, setWk, focus } = useApp();
   const segs = Array.from({ length: 12 }, (_, i) => ({ l: i === 7 ? wk : i % 2 ? 'B' : 'A', done: i < 7, today: i === 7 }));
-  const slotName = (sl: ExId | ExId[], choiceLabel?: { he: string; en: string }) =>
-    Array.isArray(sl) ? (choiceLabel ?? { he: '', en: '' })[lang] : DEF[sl][lang];
-  const parts = WORKOUTS[wk].parts.map((p, i) => ({
+  const names = (ids: ExId[]) => ids.map(id => DEF[id][lang]);
+  const parts = WORKOUTS[wk].parts.map((p, i, all) => ({
     num: '0' + (i + 1),
-    label: i === 2 ? s.superset3 : s.superset,
-    a: slotName(p.slots[0], p.choiceLabel),
-    b: slotName(p.slots[1]),
-    line: i < 2,
+    label: PART_NAME[p.kind][lang],
+    lines: p.variants
+      ? (['upper', 'lower'] as Variant[]).map(v => `${VARIANT_NAME[v][lang]}: ${names(p.variants![v]).join(' · ')}`)
+      : p.names ? [p.names.map(n => n[lang]).join(' · ')] : names(partIds(p, 'upper')),
+    line: i < all.length - 1,
   }));
   return (
     <Page>
@@ -56,7 +58,7 @@ export function Home() {
           <T w={700} s={15}>{s.pickWorkout}</T>
           <Segmented
             value={wk} onChange={(k: WorkoutKey) => setWk(k)} ink={t.ink} bg={t.bg} h={44} size={16}
-            options={(['A', 'B'] as WorkoutKey[]).map(k => ({ key: k, label: `${k} · ${WORKOUTS[k].focus[lang]}` }))}
+            options={(['A', 'B', 'F'] as WorkoutKey[]).map(k => ({ key: k, label: `${k} · ${WORKOUTS[k].focus[lang]}` }))}
           />
         </View>
         <View style={{ backgroundColor: t.block, borderRadius: 20, paddingTop: 20, paddingHorizontal: 22, paddingBottom: 22, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16 }}>
@@ -76,8 +78,7 @@ export function Home() {
               <T k="num" w={800} s={22} style={{ width: 34 }}>{p.num}</T>
               <View style={{ gap: 3, flex: 1 }}>
                 <T s={13}>{p.label}</T>
-                <T w={500} s={16} lh={1.35}>{p.a}</T>
-                <T w={500} s={16} lh={1.35}>{p.b}</T>
+                {p.lines.map(l => <T key={l} w={500} s={16} lh={1.35}>{l}</T>)}
               </View>
             </View>
           ))}
@@ -94,73 +95,130 @@ export function Home() {
 }
 
 // ---------------------------------------------------------------- Log weights
-function Stepper({ value, unit, onDec, onInc, flex, btnW }: {
+function Stepper({ value, unit, onDec, onInc, flex, btnW, onType }: {
   value: string; unit: string; onDec: () => void; onInc: () => void; flex: number; btnW: number;
+  onType?: (n: number) => void;
 }) {
   const { t } = useApp();
+  const [draft, setDraft] = React.useState<string | null>(null);
   return (
-    <View style={{ flex, height: 58, borderWidth: 1.5, borderColor: t.ink, borderRadius: 14, flexDirection: 'row', alignItems: 'center' }}>
+    <View style={{ flex, height: 48, borderWidth: 1.5, borderColor: t.ink, borderRadius: 12, flexDirection: 'row', alignItems: 'center' }}>
       <Btn onPress={onDec} style={{ width: btnW, height: '100%', alignItems: 'center', justifyContent: 'center' }} label="−">
-        <T k="num" w={800} s={24}>−</T>
+        <T k="num" w={800} s={22}>−</T>
       </Btn>
       <View style={{ flex: 1, alignItems: 'center', gap: 1 }}>
-        <T k="num" w={800} s={24} lh={1}>{value}</T>
-        <T s={12} lh={1}>{unit}</T>
+        {onType ? (
+          <TextInput
+            value={draft ?? value}
+            keyboardType="decimal-pad"
+            selectTextOnFocus
+            onFocus={() => setDraft(value)}
+            onBlur={() => setDraft(null)}
+            onChangeText={txt => {
+              setDraft(txt);
+              const n = parseFloat(txt.replace(',', '.'));
+              if (!isNaN(n)) onType(n);
+            }}
+            style={{ fontFamily: 'Archivo-ExtraBold', fontSize: 22, lineHeight: 24, color: t.ink, textAlign: 'center', padding: 0, minWidth: 56 }}
+          />
+        ) : (
+          <T k="num" w={800} s={22} lh={1.1}>{value}</T>
+        )}
+        <T s={11} lh={1}>{unit}</T>
       </View>
       <Btn onPress={onInc} style={{ width: btnW, height: '100%', alignItems: 'center', justifyContent: 'center' }} label="+">
-        <T k="num" w={800} s={24}>+</T>
+        <T k="num" w={800} s={22}>+</T>
       </Btn>
     </View>
   );
 }
 
-function ExCard({ id, choiceOf }: { id: ExId; choiceOf?: ExId[] }) {
-  const { s, t, lang, ex, bump, choice, setChoice } = useApp();
-  const def = DEF[id], v = ex[id];
-  const up = v.w > def.lw;
+function SwapSheet({ orig, onClose }: { orig: ExId; onClose: () => void }) {
+  const { s, t, lang, ids, resolve, swapEx } = useApp();
+  const options = ALL_IDS.filter(x => !ids.includes(x));
+  const pick = (to: ExId | null) => { swapEx(orig, to); onClose(); };
   return (
-    <View style={{ borderWidth: 1.5, borderColor: t.ink, borderRadius: 16, paddingTop: 14, paddingHorizontal: 14, paddingBottom: 12, gap: 12 }}>
-      {choiceOf ? (
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          {choiceOf.map(o => {
-            const on = o === choice;
-            return (
-              <Btn key={o} onPress={() => setChoice(o)} style={{
-                flex: 1, minHeight: 52, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, justifyContent: 'center',
-                backgroundColor: on ? t.ink : 'transparent', borderWidth: on ? 0 : 1.5, borderColor: t.ink,
-              }}>
-                <T w={on ? 700 : 500} s={14} lh={1.25} c={on ? t.bg : t.ink}>{DEF[o][lang]}</T>
+    <Modal transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
+        <View style={{ backgroundColor: t.bg, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '75%', paddingTop: 18, paddingHorizontal: 20, paddingBottom: 24, gap: 12 }}>
+          <T k="head" s={24} lh={1.15}>{s.swapTitle}</T>
+          <T s={14} lh={1.35}>{s.swapNote}</T>
+          <T w={700} s={15} lh={1.3}>{DEF[resolve(orig)][lang]}</T>
+          <ScrollView style={{ flexGrow: 0 }}>
+            {resolve(orig) !== orig && (
+              <Btn onPress={() => pick(null)} style={{ paddingVertical: 14, borderTopWidth: 1, borderTopColor: t.ink }}>
+                <T w={700} s={15} c={t.accText}>{s.restore} · {DEF[orig][lang]}</T>
               </Btn>
-            );
-          })}
+            )}
+            {options.map(o => (
+              <Btn key={o} onPress={() => pick(o)} style={{ paddingVertical: 14, borderTopWidth: 1, borderTopColor: t.ink }}>
+                <T w={500} s={15} lh={1.3}>{DEF[o][lang]}</T>
+              </Btn>
+            ))}
+          </ScrollView>
+          <Btn onPress={onClose} style={{ height: 48, borderRadius: 14, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
+            <T w={700} s={16}>{s.close}</T>
+          </Btn>
         </View>
-      ) : (
-        <T w={700} s={17} lh={1.3}>{def[lang]}</T>
-      )}
-      <T s={14} style={{ marginTop: -6 }}>
-        {s.lastTime} <T k="num" w={500} s={14}>{`${fmt(def.lw)} ${s.kg} × ${def.lr}`}</T>
-      </T>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Stepper flex={1.35} btnW={48} value={fmt(v.w)} unit={s.kg} onDec={() => bump(id, 'w', -def.step)} onInc={() => bump(id, 'w', def.step)} />
-        <Stepper flex={1} btnW={44} value={String(v.r)} unit={s.reps} onDec={() => bump(id, 'r', -1)} onInc={() => bump(id, 'r', 1)} />
       </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 16 }}>
-        <T s={13}>{s.sets}</T>
-        {up && (
-          <T w={700} s={13} c={t.accText}>{s.upPre} <T k="num" w={800} s={13} c={t.accText}>{fmt(v.w - def.lw)}</T> {s.kg}</T>
+    </Modal>
+  );
+}
+
+function ExCard({ orig }: { orig: ExId }) {
+  const { s, t, lang, ex, bump, setWeight, resolve, rangeFor, role } = useApp();
+  const [sheet, setSheet] = React.useState(false);
+  const id = resolve(orig), swapped = id !== orig;
+  const def = DEF[id], rows = ex[id];
+  const [lo, hi] = rangeFor(id);
+  const top = Math.max(...rows.map(r => r.w));
+  return (
+    <View style={{ borderWidth: 1.5, borderColor: t.ink, borderRadius: 16, paddingTop: 14, paddingHorizontal: 14, paddingBottom: 12, gap: 10 }}>
+      <T w={700} s={17} lh={1.3}>{def[lang]}</T>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Btn onPress={() => Linking.openURL(videoUrl(id))} label={s.video}
+          style={{ height: 34, paddingHorizontal: 12, borderRadius: 999, backgroundColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
+          <T w={700} s={13} c={t.bg}>▶ {s.video}</T>
+        </Btn>
+        {role === 'coach' && (
+          <Btn onPress={() => setSheet(true)} label={s.swap}
+            style={{ height: 34, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
+            <T w={700} s={13}>{s.swap}</T>
+          </Btn>
         )}
+        {swapped && <T w={700} s={13} c={t.accText}>{s.swapped}</T>}
       </View>
+      {sheet && <SwapSheet orig={orig} onClose={() => setSheet(false)} />}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+        <T s={14}>
+          {s.lastTime} <T k="num" w={500} s={14}>{`${fmt(def.lw)} ${s.kg} × ${def.lr}`}</T>
+        </T>
+        <T s={14}>{s.repRange} <T k="num" w={500} s={14}>{`${lo}–${hi}`}</T></T>
+      </View>
+      {rows.map((row, i) => (
+        <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <T w={500} s={14} style={{ width: 40 }}>{s.set} <T k="num" w={800} s={14}>{i + 1}</T></T>
+          <Stepper flex={1.35} btnW={44} value={fmt(row.w)} unit={s.kg}
+            onDec={() => bump(id, i, 'w', -def.step)} onInc={() => bump(id, i, 'w', def.step)} onType={n => setWeight(id, i, n)} />
+          <Stepper flex={1} btnW={40} value={String(row.r)} unit={s.reps}
+            onDec={() => bump(id, i, 'r', -1)} onInc={() => bump(id, i, 'r', 1)} />
+        </View>
+      ))}
+      {top > def.lw && (
+        <T w={700} s={13} c={t.accText} style={{ alignSelf: 'flex-end' }}>
+          {s.upPre} <T k="num" w={800} s={13} c={t.accText}>{fmt(top - def.lw)}</T> {s.kg}
+        </T>
+      )}
     </View>
   );
 }
 
 export function Log() {
-  const { s, t, go, choice, total, frame, wk, focus } = useApp();
-  const parts = WORKOUTS[wk].parts.map((p, i) => ({
-    num: '0' + (i + 1),
-    title: i === 2 ? s.superset3 : s.superset,
-    items: p.slots.map(sl => (Array.isArray(sl) ? { id: choice, choiceOf: sl } : { id: sl, choiceOf: undefined as ExId[] | undefined })),
-  }));
+  const { s, t, go, total, frame, wk, focus, lang, variant, setVariant, intensity, setIntensity } = useApp();
+  // Warm-up and abs have no tracking, so only the other parts get a weight section.
+  const parts = WORKOUTS[wk].parts
+    .map((p: Part, i) => ({ p, num: '0' + (i + 1), idx: i, ids: partIds(p, variant) }))
+    .filter(x => x.ids.length > 0);
   return (
     <Page>
       <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 }}>
@@ -172,13 +230,27 @@ export function Log() {
       <ScrollView style={scrollStyle()} contentContainerStyle={{ paddingTop: 4, paddingHorizontal: 20, paddingBottom: 20 }}>
         <T k="head" s={32} lh={1.1}>{s.logTitle}</T>
         <T s={15} style={{ marginTop: 6 }}>{s.workout} <T k="num" w={800} s={15}>{wk}</T> · {focus} · 27.10</T>
-        {parts.map(p => (
-          <View key={p.num} style={{ gap: 10, marginTop: 24 }}>
+        {parts.map(({ p, num, idx, ids }) => (
+          <View key={num} style={{ gap: 10, marginTop: 24 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-              <T k="num" w={800} s={20}>{p.num}</T>
-              <T w={700} s={15}>{p.title}</T>
+              <T k="num" w={800} s={20}>{num}</T>
+              <T w={700} s={15}>{PART_NAME[p.kind][lang]}</T>
             </View>
-            {p.items.map(it => <ExCard key={it.id} id={it.id} choiceOf={it.choiceOf} />)}
+            {p.variants && (
+              <Segmented
+                value={variant} onChange={(v: Variant) => setVariant(v)} ink={t.ink} bg={t.bg} h={40} size={15}
+                options={(['upper', 'lower'] as Variant[]).map(v => ({ key: v, label: VARIANT_NAME[v][lang] }))}
+              />
+            )}
+            {ids.map(id => <ExCard key={id} orig={id} />)}
+            <View style={{ gap: 6 }}>
+              <T w={500} s={14}>{s.intensity}</T>
+              <Segmented
+                value={intensity[`${wk}:${idx}`] ?? 'right'} onChange={(v: Intensity) => setIntensity(idx, v)}
+                ink={t.ink} bg={t.bg} h={40} size={15}
+                options={INTENSITIES.map(o => ({ key: o.key, label: o[lang] }))}
+              />
+            </View>
           </View>
         ))}
       </ScrollView>
@@ -270,9 +342,13 @@ const PW = 270, PH = 480;
 export function Share() {
   const {
     s, t, he, go, shareMode, setShareMode, cardColor, setCardColor, cardLang, setCardLang,
-    clearInk, setClearInk, frame, showToast,
+    clearInk, setClearInk, frame, showToast, period, setPeriod, photo, setPhoto,
   } = useApp();
   const clear = shareMode === 'clear';
+  const pickPhoto = async () => {
+    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: true, aspect: [1, 1] });
+    if (r.assets?.[0]) setPhoto(r.assets[0].uri);
+  };
   return (
     <Page>
       <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 }}>
@@ -282,7 +358,11 @@ export function Share() {
         </Btn>
         <T k="head" s={20} style={{ flex: 1, textAlign: 'center', marginEnd: 84 }}>{s.shareStory}</T>
       </View>
-      <View style={{ paddingTop: 6, paddingHorizontal: 20 }}>
+      <View style={{ paddingTop: 6, paddingHorizontal: 20, gap: 8 }}>
+        <Segmented
+          value={period} onChange={setPeriod} ink={t.ink} bg={t.bg} h={38} size={15}
+          options={[{ key: 'workout', label: s.periodWorkout }, { key: 'month', label: s.periodMonth }]}
+        />
         <Segmented
           value={shareMode} onChange={setShareMode} ink={t.ink} bg={t.bg} h={38} size={15}
           options={[{ key: 'full', label: s.fullBg }, { key: 'clear', label: s.clearBg }]}
@@ -319,6 +399,18 @@ export function Share() {
               value={cardLang} onChange={(l: Lang) => setCardLang(l)} ink={t.ink} bg={t.bg} h={30} size={13} radius={999} flex={false}
               options={[{ key: 'he', label: 'עברית', he: true }, { key: 'en', label: 'English', he: false }]}
             />
+          </View>
+        )}
+        {!clear && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', width: PW, gap: 10 }}>
+            <Btn onPress={pickPhoto} style={{ flex: 1, height: 38, borderRadius: 12, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
+              <T w={700} s={14}>{photo ? s.changePhoto : s.addPhoto}</T>
+            </Btn>
+            {photo && (
+              <Btn onPress={() => setPhoto(null)} style={{ height: 38, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' }}>
+                <T w={500} s={14}>{s.removePhoto}</T>
+              </Btn>
+            )}
           </View>
         )}
       </ScrollView>
@@ -423,18 +515,28 @@ export function Progress() {
 
 // ---------------------------------------------------------------- Board
 export function Board() {
-  const { s, t, hidden, toggleHidden } = useApp();
+  const { s, t, lang, hidden, toggleHidden } = useApp();
+  const [key, setKey] = React.useState<BoardKey>('improved');
+  const b = BOARDS[key];
+  const myValue = b.rows[b.me - 1];
+  const sharing = !hidden;
   return (
     <Page>
       <ScrollView style={scrollStyle()} contentContainerStyle={{ paddingTop: 10, paddingHorizontal: 20, paddingBottom: 20 }}>
         <T k="head" s={32} lh={1.1}>{s.boardTitle}</T>
-        <T s={14} lh={1.4} style={{ marginTop: 6 }}>{s.boardSub}</T>
-        <T w={500} s={15} style={{ marginTop: 30 }}>{s.yourPlace}</T>
+        <View style={{ marginTop: 14 }}>
+          <Segmented
+            value={key} onChange={setKey} ink={t.ink} bg={t.bg} h={40} size={14}
+            options={(Object.keys(BOARDS) as BoardKey[]).map(k => ({ key: k, label: BOARDS[k].label[lang] }))}
+          />
+        </View>
+        <T s={14} lh={1.4} style={{ marginTop: 10 }}>{b.sub[lang]}</T>
+        <T w={500} s={15} style={{ marginTop: 26 }}>{s.yourPlace}</T>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 16, marginTop: 2 }}>
-          <T k="num" w={800} s={132} lh={0.85} c={t.accBig} ltr style={{ letterSpacing: -4 }}>#2</T>
+          <T k="num" w={800} s={132} lh={0.85} c={t.accBig} ltr style={{ letterSpacing: -4 }}>{'#' + b.me}</T>
           <View style={{ gap: 6, paddingBottom: 6, flex: 1 }}>
-            <T s={15}>{s.of} <T k="num" w={800} s={15}>48</T> {s.members}</T>
-            <T s={15}><T k="num" w={800} s={22} ltr>+9%</T> {s.volMonth}</T>
+            <T s={15}>{s.of} <T k="num" w={800} s={15}>{b.of}</T> {s.members}</T>
+            <T s={15}><T k="num" w={800} s={22} ltr>{myValue}</T> {b.unit[lang]}</T>
           </View>
         </View>
         {hidden && (
@@ -444,8 +546,8 @@ export function Board() {
         )}
         <T w={700} s={15} style={{ marginTop: 28 }}>{s.top5}</T>
         <View style={{ gap: 6, marginTop: 10 }}>
-          {BOARD_PCTS.map((pct, i) => {
-            const me = i === 1;
+          {b.rows.map((val, i) => {
+            const me = i === b.me - 1;
             return (
               <View key={i} style={{
                 flexDirection: 'row', alignItems: 'center', gap: 12, height: 48, paddingHorizontal: 14, borderRadius: 12,
@@ -453,7 +555,7 @@ export function Board() {
               }}>
                 <T k="num" w={800} s={18} c={me ? t.onAcc : t.ink} ltr style={{ width: 32 }}>{'#' + (i + 1)}</T>
                 <T w={700} s={15} c={t.onAcc} style={{ flex: 1 }}>{me ? (hidden ? s.meHidden : s.me) : ''}</T>
-                <T k="num" w={me ? 800 : 500} s={16} c={me ? t.onAcc : t.ink} ltr>{pct}</T>
+                <T k="num" w={me ? 800 : 500} s={16} c={me ? t.onAcc : t.ink} ltr>{val}</T>
               </View>
             );
           })}
@@ -466,11 +568,11 @@ export function Board() {
           <Btn onPress={toggleHidden} label={s.hide} style={{ width: 56, height: 44, alignItems: 'center', justifyContent: 'center' }}>
             <View style={{
               width: 51, height: 31, borderRadius: 16, justifyContent: 'center',
-              backgroundColor: hidden ? t.acc : 'transparent', borderWidth: hidden ? 0 : 1.5, borderColor: t.ink,
+              backgroundColor: sharing ? t.acc : 'transparent', borderWidth: sharing ? 0 : 1.5, borderColor: t.ink,
             }}>
               <View style={{
-                position: 'absolute', top: hidden ? 2 : 2.5, end: hidden ? 2 : undefined, start: hidden ? undefined : 2.5,
-                width: hidden ? 27 : 23, height: hidden ? 27 : 23, borderRadius: 14, backgroundColor: hidden ? t.knob : t.ink,
+                position: 'absolute', top: sharing ? 2 : 2.5, end: sharing ? 2 : undefined, start: sharing ? undefined : 2.5,
+                width: sharing ? 27 : 23, height: sharing ? 27 : 23, borderRadius: 14, backgroundColor: sharing ? t.knob : t.ink,
               } as ViewStyle} />
             </View>
           </Btn>
@@ -481,14 +583,140 @@ export function Board() {
   );
 }
 
+// ---------------------------------------------------------------- Coach
+function Spark({ w, color }: { w: number[]; color: string }) {
+  const W = 96, H = 30, lo = Math.min(...w), hi = Math.max(...w), span = hi - lo || 1;
+  const pts = w.map((v, i) => `${(i / (w.length - 1)) * (W - 6) + 3},${H - 4 - ((v - lo) / span) * (H - 8)}`).join(' ');
+  return (
+    <Svg width={W} height={H} style={{ direction: 'ltr' } as ViewStyle}>
+      <Polyline points={pts} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+const attention = (tr: Trainee) => tr.lastDays >= 7 || tr.lifts.some(l => readyToRaise(l.w));
+const daysText = (s: { daysAgo: string; today1: string }, n: number) => (n === 1 ? s.today1 : s.daysAgo.replace('{n}', String(n)));
+
+export function Coach() {
+  const { s, t, lang } = useApp();
+  const [open, setOpen] = React.useState<string | null>(null);
+  const [filter, setFilter] = React.useState<'all' | 'attention'>('all');
+  const tr = TRAINEES.find(x => x.id === open);
+
+  if (tr) {
+    return (
+      <Page>
+        <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 }}>
+          <Btn onPress={() => setOpen(null)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 44, paddingHorizontal: 8 }}>
+            <Chev color={t.ink} />
+            <T w={500} s={16}>{s.back}</T>
+          </Btn>
+        </View>
+        <ScrollView style={scrollStyle()} contentContainerStyle={{ paddingTop: 4, paddingHorizontal: 20, paddingBottom: 20 }}>
+          <T k="head" s={32} lh={1.1}>{tr.name[lang]}</T>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+            {[
+              { v: daysText(s, tr.lastDays), l: s.lastWorkout, small: true },
+              { v: String(tr.perWeek), l: s.perWeek },
+              { v: String(tr.streak), l: s.streakWeeks },
+            ].map(c => (
+              <View key={c.l} style={{ flex: 1, backgroundColor: t.block, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 12, gap: 4 }}>
+                <T k="num" w={800} s={c.small ? 16 : 28} lh={c.small ? 1.3 : 1} c={t.onBlock}>{c.v}</T>
+                <T s={12} lh={1.25} c={t.onBlock}>{c.l}</T>
+              </View>
+            ))}
+          </View>
+          <T k="head" s={20} style={{ marginTop: 28 }}>{s.weightsTitle}</T>
+          <View style={{ gap: 10, marginTop: 12 }}>
+            {tr.lifts.map(l => {
+              const last = l.w[l.w.length - 1], gain = last - l.w[0], raise = readyToRaise(l.w);
+              return (
+                <View key={l.ex} style={{ borderWidth: 1.5, borderColor: t.ink, borderRadius: 16, padding: 14, gap: 10 }}>
+                  <T w={700} s={16} lh={1.3}>{DEF[l.ex][lang]}</T>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <T><T k="num" w={800} s={30}>{fmt(last)}</T> <T s={14}>{s.kg} × {l.r}</T></T>
+                    <Spark w={l.w} color={t.ink} />
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <T w={700} s={13} c={t.accText}>{gain > 0 ? '+' + fmt(gain) + ' ' + s.kg + ' ' + s.since : s.noChange}</T>
+                    {raise && (
+                      <View style={{ backgroundColor: t.acc, borderRadius: 999, paddingVertical: 3, paddingHorizontal: 10 }}>
+                        <T w={700} s={12} c={t.onAcc}>{s.raiseTag}</T>
+                      </View>
+                    )}
+                  </View>
+                  {raise && <T s={12} lh={1.35}>{s.raiseNote}</T>}
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
+        <TabBar />
+      </Page>
+    );
+  }
+
+  const list = TRAINEES.filter(x => filter === 'all' || attention(x));
+  return (
+    <Page>
+      <ScrollView style={scrollStyle()} contentContainerStyle={{ paddingTop: 10, paddingHorizontal: 20, paddingBottom: 20 }}>
+        <T k="head" s={32} lh={1.1}>{s.coachTitle}</T>
+        <View style={{ marginTop: 14 }}>
+          <Segmented
+            value={filter} onChange={setFilter} ink={t.ink} bg={t.bg} h={40} size={14}
+            options={[{ key: 'all', label: s.coachAll }, { key: 'attention', label: s.coachAttention }]}
+          />
+        </View>
+        <View style={{ gap: 8, marginTop: 16 }}>
+          {list.length === 0 && <T s={14}>{s.none}</T>}
+          {list.map(x => {
+            const raises = x.lifts.filter(l => readyToRaise(l.w)).length;
+            return (
+              <Btn key={x.id} onPress={() => setOpen(x.id)}
+                style={{ borderWidth: 1.5, borderColor: t.ink, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14, gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <T w={700} s={16}>{x.name[lang]}</T>
+                  <T s={13}>{daysText(s, x.lastDays)}</T>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <T s={13}>{s.perWeek}: <T k="num" w={800} s={13}>{x.perWeek}</T></T>
+                  {x.lastDays >= 7 && (
+                    <View style={{ backgroundColor: t.ink, borderRadius: 999, paddingVertical: 2, paddingHorizontal: 9 }}>
+                      <T w={700} s={12} c={t.bg}>{s.inactiveTag.replace('{n}', String(x.lastDays))}</T>
+                    </View>
+                  )}
+                  {raises > 0 && (
+                    <View style={{ backgroundColor: t.acc, borderRadius: 999, paddingVertical: 2, paddingHorizontal: 9 }}>
+                      <T w={700} s={12} c={t.onAcc}>{s.raiseTag} · {raises}</T>
+                    </View>
+                  )}
+                </View>
+              </Btn>
+            );
+          })}
+        </View>
+      </ScrollView>
+      <TabBar />
+    </Page>
+  );
+}
+
 // ---------------------------------------------------------------- Settings
 export function Settings() {
-  const { s, t, lang, setLang, themeKey, setTheme } = useApp();
+  const { s, t, lang, setLang, themeKey, setTheme, role, setRole } = useApp();
   return (
     <Page>
       <ScrollView style={scrollStyle()} contentContainerStyle={{ paddingTop: 10, paddingHorizontal: 20, paddingBottom: 20 }}>
         <T k="head" s={32} lh={1.1}>{s.settings}</T>
-        <T k="head" s={20} style={{ marginTop: 30 }}>{s.language}</T>
+        <T k="head" s={20} style={{ marginTop: 30 }}>{s.role}</T>
+        <View style={{ marginTop: 12 }}>
+          <Segmented
+            value={role} onChange={setRole} ink={t.ink} bg={t.bg}
+            options={[{ key: 'trainee', label: s.roleTrainee }, { key: 'coach', label: s.roleCoach }]}
+          />
+        </View>
+        <T s={13} lh={1.4} style={{ marginTop: 8 }}>{s.roleNote}</T>
+        <T k="head" s={20} style={{ marginTop: 32 }}>{s.language}</T>
         <View style={{ marginTop: 12 }}>
           <Segmented
             value={lang} onChange={setLang} ink={t.ink} bg={t.bg}

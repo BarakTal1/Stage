@@ -9,7 +9,8 @@ export const fmt = (n: number) =>
 
 export type ExId =
   | 'e1' | 'e2' | 'e3' | 'e4' | 'e5a' | 'e5b' | 'e6'
-  | 'a1' | 'a2' | 'a3' | 'a4' | 'a5a' | 'a5b' | 'a6';
+  | 'a1' | 'a2' | 'a3' | 'a4' | 'a5a' | 'a5b' | 'a6'
+  | 'g1' | 'g2' | 'l1' | 'l2' | 'l3' | 'l4';
 
 export const DEF: Record<ExId, { he: string; en: string; lw: number; lr: number; step: number }> = {
   e1: { he: 'פולדאון בכבל באחיזה רחבה', en: 'Wide-grip cable lat pulldown', lw: 55, lr: 10, step: 2.5 },
@@ -31,6 +32,13 @@ export const DEF: Record<ExId, { he: string; en: string; lw: number; lr: number;
   a5a: { he: 'פשיטת מרפקים בכבל עם חבל', en: 'Cable triceps pushdown with rope', lw: 32.5, lr: 12, step: 2.5 },
   a5b: { he: 'פשיטת מרפקים מעל הראש בכבל', en: 'Overhead cable triceps extension', lw: 25, lr: 12, step: 2.5 },
   a6: { he: 'הרמת כתפיים לצדדים עם משקולות יד', en: 'Dumbbell lateral raise', lw: 12, lr: 15, step: 1 },
+  // Placeholders for activation (g) and lower-body (l) exercises. Replace with the real studio program.
+  g1: { he: 'פתיחת גומיה לאחור', en: 'Band pull-apart', lw: 5, lr: 12, step: 2.5 },
+  g2: { he: 'גשר ישבן עם משקולת', en: 'Weighted glute bridge', lw: 20, lr: 12, step: 2.5 },
+  l1: { he: 'כפיפת ברכיים בשכיבה', en: 'Lying leg curl', lw: 30, lr: 12, step: 2.5 },
+  l2: { he: 'לחיצת רגליים', en: 'Leg press', lw: 100, lr: 12, step: 5 },
+  l3: { he: 'סקוואט בולגרי עם משקולות יד', en: 'Dumbbell Bulgarian split squat', lw: 16, lr: 10, step: 2 },
+  l4: { he: 'הרמות תאומים בעמידה', en: 'Standing calf raise', lw: 40, lr: 15, step: 2.5 },
 };
 
 export const INITIAL_EX: Record<ExId, { w: number; r: number }> = {
@@ -38,82 +46,169 @@ export const INITIAL_EX: Record<ExId, { w: number; r: number }> = {
   e5a: { w: 30, r: 12 }, e5b: { w: 14, r: 12 }, e6: { w: 20, r: 15 },
   a1: { w: 80, r: 8 }, a2: { w: 30, r: 10 }, a3: { w: 32, r: 10 }, a4: { w: 20, r: 12 },
   a5a: { w: 35, r: 12 }, a5b: { w: 25, r: 12 }, a6: { w: 12, r: 15 },
+  g1: { w: 5, r: 12 }, g2: { w: 22.5, r: 12 }, l1: { w: 32.5, r: 12 }, l2: { w: 110, r: 12 },
+  l3: { w: 18, r: 10 }, l4: { w: 40, r: 15 },
 };
 
-export type WorkoutKey = 'A' | 'B';
-type Slot = ExId | ExId[]; // an array is a choice between exercises
+/** Placeholder guidance video: a YouTube search for the exercise. Replace with the studio's own videos. */
+export const videoUrl = (id: ExId) =>
+  'https://www.youtube.com/results?search_query=' + encodeURIComponent(DEF[id].en + ' form');
 
-/** The two workouts of a cycle. B is the one from the design. A is placeholder data. */
+export const ALL_IDS = Object.keys(DEF) as ExId[];
+
+export const SETS = 3;
+export type SetRow = { w: number; r: number };
+
+/** Every exercise starts with the same weight and reps in all of its sets. */
+export const initialSets = (): Record<ExId, SetRow[]> =>
+  Object.fromEntries(
+    (Object.keys(INITIAL_EX) as ExId[]).map(id => [id, Array.from({ length: SETS }, () => ({ ...INITIAL_EX[id] }))]),
+  ) as Record<ExId, SetRow[]>;
+
+export type WorkoutKey = 'A' | 'B' | 'F';
+export type Variant = 'upper' | 'lower';
+export type PartKind = 'warmup' | 'activation' | 'project' | 'superset' | 'last' | 'abs';
+type Name = { he: string; en: string };
+
+/**
+ * One part of a workout. Warm-up and abs are plain lists with no tracking.
+ * The last part has an upper and a lower variant, and the trainee picks one.
+ * `reps` is the rep range the coach allows for the part.
+ */
+export type Part = {
+  kind: PartKind;
+  names?: Name[];
+  slots?: [ExId, ExId];
+  variants?: Record<Variant, [ExId, ExId]>;
+  reps?: [number, number];
+};
+
+export const PART_NAME: Record<PartKind, Name> = {
+  warmup: { he: 'חימום דינמי', en: 'Dynamic warm-up' },
+  activation: { he: 'הפעלה', en: 'Activation' },
+  project: { he: 'פרויקט · סופרסט', en: 'Project · superset' },
+  superset: { he: 'סופרסט', en: 'Superset' },
+  last: { he: 'סופרסט אחרון · עליון או תחתון', en: 'Last superset · upper or lower' },
+  abs: { he: 'בטן · לפי המאמן', en: 'Abs · coach decides' },
+};
+export const VARIANT_NAME: Record<Variant, Name> = {
+  upper: { he: 'פלג גוף עליון', en: 'Upper body' },
+  lower: { he: 'פלג גוף תחתון', en: 'Lower body' },
+};
+
+const WARMUP: Name[] = [
+  { he: 'סיבובי כתפיים', en: 'Shoulder circles' },
+  { he: 'חתול־פרה', en: 'Cat-cow' },
+  { he: 'סקוואט משקל גוף', en: 'Bodyweight squat' },
+  { he: 'לאנג׳ הליכה', en: 'Walking lunge' },
+  { he: 'סיבובי אגן', en: 'Hip circles' },
+];
+const ABS: Name[] = [
+  { he: 'פלנק', en: 'Plank' },
+  { he: 'הרמות רגליים בתלייה', en: 'Hanging leg raise' },
+];
+const bookends = (middle: Part[]): Part[] => [
+  { kind: 'warmup', names: WARMUP },
+  { kind: 'activation', slots: ['g1', 'g2'], reps: [10, 15] },
+  ...middle,
+  { kind: 'abs', names: ABS },
+];
+
+/** The workouts of a cycle. B is the one from the design. A and F are placeholder data. */
 export const WORKOUTS: Record<WorkoutKey, {
-  focus: { he: string; en: string };
-  prev: number; prevDate: string;
-  parts: { slots: [Slot, Slot]; choiceLabel?: { he: string; en: string } }[];
+  focus: Name; prev: number; prevDate: string; parts: Part[];
 }> = {
   B: {
-    focus: { he: 'משיכה', en: 'Pull' }, prev: 7530, prevDate: '20.10',
-    parts: [
-      { slots: ['e1', 'e2'] },
-      { slots: ['e3', 'e4'] },
-      { slots: [['e5a', 'e5b'], 'e6'], choiceLabel: { he: 'כפיפת מרפקים עם מוט EZ או כפיפת פטישים', en: 'EZ-bar curl or hammer curl' } },
-    ],
+    focus: { he: 'משיכה', en: 'Pull' }, prev: 8500, prevDate: '20.10',
+    parts: bookends([
+      { kind: 'project', slots: ['e3', 'e4'], reps: [6, 12] },
+      { kind: 'superset', slots: ['e1', 'e2'], reps: [8, 12] },
+      { kind: 'last', variants: { upper: ['e5a', 'e6'], lower: ['l1', 'l2'] }, reps: [8, 15] },
+    ]),
   },
   A: {
-    focus: { he: 'דחיפה', en: 'Push' }, prev: 6050, prevDate: '23.10',
-    parts: [
-      { slots: ['a1', 'a2'] },
-      { slots: ['a3', 'a4'] },
-      { slots: [['a5a', 'a5b'], 'a6'], choiceLabel: { he: 'פשיטת מרפקים בכבל עם חבל או מעל הראש', en: 'Rope pushdown or overhead extension' } },
-    ],
+    focus: { he: 'דחיפה', en: 'Push' }, prev: 6900, prevDate: '23.10',
+    parts: bookends([
+      { kind: 'project', slots: ['a1', 'a2'], reps: [6, 12] },
+      { kind: 'superset', slots: ['a3', 'a4'], reps: [8, 12] },
+      { kind: 'last', variants: { upper: ['a5a', 'a6'], lower: ['l3', 'l4'] }, reps: [8, 15] },
+    ]),
+  },
+  F: {
+    focus: { he: 'גוף מלא', en: 'Full body' }, prev: 9300, prevDate: '21.10',
+    parts: bookends([
+      { kind: 'project', slots: ['a1', 'e1'], reps: [6, 12] },
+      { kind: 'superset', slots: ['e3', 'a2'], reps: [8, 12] },
+      { kind: 'last', variants: { upper: ['e5a', 'a5a'], lower: ['l1', 'l3'] }, reps: [8, 15] },
+    ]),
   },
 };
 
-/** The six exercises of a workout, with the chosen option in the choice slot. */
-export function workoutIds(wk: WorkoutKey, choice: ExId): ExId[] {
-  return WORKOUTS[wk].parts.flatMap(p => p.slots.map(sl => (Array.isArray(sl) ? choice : sl)));
+export const DEFAULT_VARIANT: Record<WorkoutKey, Variant> = { A: 'upper', B: 'upper', F: 'upper' };
+
+/** The exercises of one part. Warm-up and abs have none. */
+export const partIds = (p: Part, v: Variant): ExId[] => p.variants?.[v] ?? p.slots ?? [];
+
+/** The tracked exercises of a workout, with the chosen variant in the last part. */
+export function workoutIds(wk: WorkoutKey, v: Variant): ExId[] {
+  return WORKOUTS[wk].parts.flatMap(p => partIds(p, v));
 }
 
-export const DEFAULT_CHOICE: Record<WorkoutKey, ExId> = { A: 'a5a', B: 'e5a' };
+/** The rep range the coach allows for an exercise in a workout. */
+export function repRange(wk: WorkoutKey, id: ExId): [number, number] {
+  const part = WORKOUTS[wk].parts.find(p => [...(p.slots ?? []), ...Object.values(p.variants ?? {}).flat()].includes(id));
+  return part?.reps ?? [1, 30];
+}
+
+export type Intensity = 'easy' | 'right' | 'hard';
+export const INTENSITIES: { key: Intensity; he: string; en: string }[] = [
+  { key: 'easy', he: 'קל', en: 'Easy' },
+  { key: 'right', he: 'מתאים', en: 'Right' },
+  { key: 'hard', he: 'קשה', en: 'Hard' },
+];
 
 export const S = {
   he: {
-    kg: 'ק״ג', tabHome: 'בית', tabProgress: 'התקדמות', tabBoard: 'לוח', tabSettings: 'הגדרות',
+    kg: 'ק״ג', tabHome: 'בית', tabProgress: 'התקדמות', tabBoard: 'לוח', tabSettings: 'הגדרות', tabTrainees: 'מתאמנים',
+    role: 'תצוגה', roleTrainee: 'מתאמן', roleCoach: 'מאמן', roleNote: 'תצוגת מאמן מוסיפה את מסך המתאמנים ואת החלפת התרגילים.',
+    coachTitle: 'המתאמנים שלי', coachAll: 'כולם', coachAttention: 'דורשים תשומת לב', lastWorkout: 'אימון אחרון', daysAgo: 'לפני {n} ימים', today1: 'אתמול', perWeek: 'אימונים בשבוע', streakWeeks: 'שבועות ברצף', inactiveTag: 'לא התאמן {n} ימים', raiseTag: 'כדאי להעלות', raiseNote: 'הצעה בלבד. המאמן מחליט. המשקל לא השתנה ב-3 אימונים.', weightsTitle: 'משקלים', since: 'מאז תחילת ספטמבר', back: 'חזרה', none: 'אין מתאמנים להצגה',
     dateLong: 'יום שלישי, 27 באוקטובר', hello: 'בוקר טוב, נועה', cycle: 'מחזור אוקטובר', cycleCount: 'מתוך 12 הושלמו',
-    today: 'האימון של היום', focus: 'משיכה', meta: '3 סופרסטים · כ־50 דקות', workout: 'אימון',
-    superset: 'סופרסט', superset3: 'סופרסט · תרגיל ראשון לבחירה', part3a: 'כפיפת מרפקים עם מוט EZ או כפיפת פטישים',
-    cta: 'סיימתי את האימון · רישום משקלים', logTitle: 'רישום משקלים', lastTime: 'בפעם הקודמת:', reps: 'חזרות', sets: '3 סטים',
+    today: 'האימון של היום', focus: 'משיכה', meta: '6 חלקים · כ־50 דקות', workout: 'אימון',
+    cta: 'סיימתי את האימון · רישום משקלים', logTitle: 'רישום משקלים', lastTime: 'בפעם הקודמת:', reps: 'חזרות', video: 'סרטון הדרכה', swap: 'החלפה', swapTitle: 'החלפת תרגיל', swapNote: 'המאמן מחליף תרגיל כשהמתאמן לא יכול לבצע אותו.', restore: 'חזרה לתרגיל המקורי', swapped: 'הוחלף', close: 'סגירה', set: 'סט', intensity: 'עצימות', repRange: 'טווח חזרות', noTrack: 'ללא מעקב',
     upPre: 'עלייה של', totalShort: 'נפח כולל', save: 'שמירת האימון',
     saved: 'האימון נשמר', dateFull: 'יום שלישי, 27.10.2026', totalLabel: 'נפח אימון כולל', vs1: 'לעומת אימון', vs2: 'הקודם',
     todayShort: 'היום', prs: 'שיאים אישיים', shareStory: 'שיתוף לסטורי', done: 'סיום',
-    summary: 'סיכום', fullBg: 'רקע מלא', clearBg: 'רקע שקוף', insta: 'סטורי באינסטגרם', saveRoll: 'שמירה לגלריה',
+    periodWorkout: 'האימון', periodMonth: 'סיכום חודשי', addPhoto: 'הוספת תמונה', changePhoto: 'החלפת תמונה', removePhoto: 'הסרה', summary: 'סיכום', fullBg: 'רקע מלא', clearBg: 'רקע שקוף', insta: 'סטורי באינסטגרם', saveRoll: 'שמירה לגלריה',
     textColor: 'צבע הטקסט', inkLight: 'לבן', inkDark: 'כהה',
     streak: 'שבועות ברצף', streakSub: 'שני אימונים בכל שבוע', byEx: 'משקלים לפי תרגיל', gain: 'ק״ג מתחילת ספטמבר',
     recent: 'אימונים אחרונים', noChange: 'ללא שינוי',
     boardTitle: 'לוח הסטודיו', boardSub: 'אוקטובר 2026 · דירוג לפי עלייה בנפח האימונים לעומת החודש הקודם',
     yourPlace: 'המקום שלך החודש', of: 'מתוך', members: 'מתאמנים', volMonth: 'נפח החודש',
-    hiddenNote: 'הדירוג מוסתר. רק את/ה רואה אותו, חברי הסטודיו לא.', top5: 'חמשת המקומות הראשונים',
-    me: 'אני', meHidden: 'אני · מוסתר', hide: 'הסתרה מהלוח', hideSub: 'הדירוג שלך לא יוצג לחברי הסטודיו',
+    hiddenNote: 'הנתונים שלך לא משותפים. רק את/ה רואה את הדירוג, חברי הסטודיו לא.', top5: 'חמשת המקומות הראשונים',
+    me: 'אני', meHidden: 'אני · מוסתר', hide: 'שיתוף בלוחות הדירוג', hideSub: 'כשהאפשרות כבויה, רק את/ה רואה את הדירוג שלך',
     settings: 'הגדרות', language: 'שפה', langNote: 'כל האפליקציה עוברת לשפה שבחרת, כולל כיוון הקריאה.',
     appColor: 'צבע האפליקציה', colorNote: 'הצבע חל על כל המסכים. כרטיס הסטורי נבחר בנפרד.',
     light: 'בהיר', dark: 'כהה', pickWorkout: 'בחירת אימון',
     toastInsta: 'באפליקציה האמיתית נפתח כאן אינסטגרם', toastSave: 'באפליקציה האמיתית הכרטיס נשמר בגלריה',
   },
   en: {
-    kg: 'kg', tabHome: 'Home', tabProgress: 'Progress', tabBoard: 'Board', tabSettings: 'Settings',
+    kg: 'kg', tabHome: 'Home', tabProgress: 'Progress', tabBoard: 'Board', tabSettings: 'Settings', tabTrainees: 'Trainees',
+    role: 'View', roleTrainee: 'Trainee', roleCoach: 'Coach', roleNote: 'Coach view adds the trainees screen and exercise swaps.',
+    coachTitle: 'My trainees', coachAll: 'All', coachAttention: 'Needs attention', lastWorkout: 'Last workout', daysAgo: '{n} days ago', today1: 'Yesterday', perWeek: 'Workouts per week', streakWeeks: 'weeks in a row', inactiveTag: 'Away {n} days', raiseTag: 'Ready to raise', raiseNote: 'A suggestion only. The coach decides. The weight did not change for 3 sessions.', weightsTitle: 'Weights', since: 'since early September', back: 'Back', none: 'No trainees to show',
     dateLong: 'Tuesday, 27 October', hello: 'Good morning, Noa', cycle: 'October cycle', cycleCount: 'of 12 done',
-    today: "Today's workout", focus: 'Pull', meta: '3 supersets · about 50 min', workout: 'Workout',
-    superset: 'Superset', superset3: 'Superset · choose the first exercise', part3a: 'EZ-bar curl or hammer curl',
-    cta: 'Done training · log weights', logTitle: 'Log weights', lastTime: 'Last time:', reps: 'reps', sets: '3 sets',
+    today: "Today's workout", focus: 'Pull', meta: '6 parts · about 50 min', workout: 'Workout',
+    cta: 'Done training · log weights', logTitle: 'Log weights', lastTime: 'Last time:', reps: 'reps', video: 'Video guide', swap: 'Swap', swapTitle: 'Swap exercise', swapNote: 'The coach swaps an exercise when the trainee cannot do it.', restore: 'Restore original', swapped: 'Swapped', close: 'Close', set: 'Set', intensity: 'Intensity', repRange: 'Rep range', noTrack: 'Not tracked',
     upPre: 'Up', totalShort: 'Total volume', save: 'Save workout',
     saved: 'Workout saved', dateFull: 'Tuesday, 27.10.2026', totalLabel: 'Total volume', vs1: 'vs. last workout', vs2: '',
     todayShort: 'Today', prs: 'Personal records', shareStory: 'Share to story', done: 'Done',
-    summary: 'Summary', fullBg: 'Full background', clearBg: 'Transparent', insta: 'Instagram story', saveRoll: 'Save to camera roll',
+    periodWorkout: 'Workout', periodMonth: 'Monthly summary', addPhoto: 'Add photo', changePhoto: 'Change photo', removePhoto: 'Remove', summary: 'Summary', fullBg: 'Full background', clearBg: 'Transparent', insta: 'Instagram story', saveRoll: 'Save to camera roll',
     textColor: 'Text color', inkLight: 'White', inkDark: 'Dark',
     streak: 'weeks in a row', streakSub: 'Two workouts every week', byEx: 'Weights by exercise', gain: 'kg since early September',
     recent: 'Recent sessions', noChange: 'No change',
     boardTitle: 'Studio board', boardSub: 'October 2026 · ranked by volume growth vs. last month',
     yourPlace: 'Your place this month', of: 'of', members: 'members', volMonth: 'volume this month',
-    hiddenNote: 'Your rank is hidden. Only you can see it.', top5: 'Top five',
-    me: 'You', meHidden: 'You · hidden', hide: 'Hide me from the board', hideSub: 'Other members won’t see your rank',
+    hiddenNote: 'Your data is not shared. Only you can see your rank.', top5: 'Top five',
+    me: 'You', meHidden: 'You · hidden', hide: 'Share on the boards', hideSub: 'When this is off, only you see your rank',
     settings: 'Settings', language: 'Language', langNote: 'The whole app switches, including reading direction.',
     appColor: 'App color', colorNote: 'Applies to every screen. The story card color is picked separately.',
     light: 'Light', dark: 'Dark', pickWorkout: 'Choose workout',
@@ -153,6 +248,12 @@ export const CARD_COLORS: Record<CardColor, string> = { red: R, brown: B, orange
 
 export const DATES = ['08.09', '15.09', '22.09', '29.09', '06.10', '13.10', '20.10', '27.10'];
 
+const SERIES_W = {
+  rdl: [65, 67.5, 67.5, 70, 72.5, 72.5, 75, 80],
+  pull: [47.5, 50, 50, 52.5, 52.5, 55, 55, 57.5],
+  bench: [65, 67.5, 70, 72.5, 72.5, 75, 77.5, 80],
+};
+
 export const SERIES = {
   rdl: { he: 'דדליפט רומני', en: 'Romanian deadlift', ex: 'e3' as ExId, r: 8, w: [65, 67.5, 67.5, 70, 72.5, 72.5, 75, 80] },
   pull: { he: 'פולדאון בכבל', en: 'Lat pulldown', ex: 'e1' as ExId, r: 10, w: [47.5, 50, 50, 52.5, 52.5, 55, 55, 57.5] },
@@ -167,6 +268,73 @@ export const BOARD_PCTS = ['+11%', '+9%', '+8%', '+7%', '+7%'];
 
 // Card strings (from ShareCardV2)
 export const CARD_STR = {
-  he: { workout: 'אימון', total: 'נפח אימון כולל', kg: 'ק״ג', pr: 'שיא אישי', fromLast: 'מהאימון הקודם', streak: 'שבועות ברצף', rank: 'בלוח הסטודיו החודש' },
-  en: { workout: 'Workout', total: 'Total volume', kg: 'kg', pr: 'PR', fromLast: 'vs. last workout', streak: 'weeks in a row', rank: 'on the studio board this month' },
+  he: { workout: 'אימון', total: 'נפח אימון כולל', totalMonth: 'נפח החודש', kg: 'ק״ג', pr: 'שיא אישי', fromLast: 'מהאימון הקודם', fromLastMonth: 'מהחודש הקודם', streak: 'שבועות ברצף', rank: 'בלוח הסטודיו החודש' },
+  en: { workout: 'Workout', total: 'Total volume', totalMonth: 'Volume this month', kg: 'kg', pr: 'PR', fromLast: 'vs. last workout', fromLastMonth: 'vs. last month', streak: 'weeks in a row', rank: 'on the studio board this month' },
+};
+
+export type Period = 'workout' | 'month';
+// Mock numbers for the monthly summary card.
+export const MONTH = { name: { he: 'אוקטובר 2026', en: 'October 2026' }, total: 74200, pct: 9 };
+
+const CAR_KG = 1500;
+/** The total weight as a real-life object, for the share card. */
+export function carsText(total: number, lang: Lang) {
+  const n = Math.round((total / CAR_KG) * (total / CAR_KG < 10 ? 10 : 1)) / (total / CAR_KG < 10 ? 10 : 1);
+  if (n === 1) return lang === 'he' ? 'כמו מכונית אחת' : 'like one car';
+  return lang === 'he' ? `כמו ${n} מכוניות` : `like ${n} cars`;
+}
+
+export type Role = 'trainee' | 'coach';
+
+type Lift = { ex: ExId; w: number[]; r: number };
+export type Trainee = {
+  id: string; name: { he: string; en: string };
+  lastDays: number; perWeek: number; streak: number; lifts: Lift[];
+};
+/** Mock trainees for the coach view. `w` is the weight of each week, oldest first. */
+export const TRAINEES: Trainee[] = [
+  { id: 't1', name: { he: 'נועה כהן', en: 'Noa Cohen' }, lastDays: 1, perWeek: 2, streak: 5, lifts: [
+    { ex: 'e3', w: SERIES_W.rdl, r: 8 }, { ex: 'e1', w: SERIES_W.pull, r: 10 }, { ex: 'a1', w: SERIES_W.bench, r: 8 }] },
+  { id: 't2', name: { he: 'דניאל לוי', en: 'Daniel Levi' }, lastDays: 2, perWeek: 3, streak: 9, lifts: [
+    { ex: 'e3', w: [80, 82.5, 82.5, 85, 87.5, 90, 90, 92.5], r: 8 }, { ex: 'e1', w: [60, 60, 62.5, 62.5, 65, 65, 67.5, 70], r: 10 }, { ex: 'a1', w: [90, 90, 92.5, 92.5, 95, 95, 97.5, 100], r: 6 }] },
+  { id: 't3', name: { he: 'מיכל ברק', en: 'Michal Barak' }, lastDays: 3, perWeek: 2, streak: 3, lifts: [
+    { ex: 'e3', w: [50, 52.5, 52.5, 55, 55, 55, 55, 55], r: 8 }, { ex: 'e1', w: [37.5, 40, 40, 40, 42.5, 42.5, 45, 45], r: 10 }, { ex: 'a1', w: [40, 40, 42.5, 42.5, 42.5, 45, 45, 45], r: 8 }] },
+  { id: 't4', name: { he: 'אורי שפירא', en: 'Uri Shapira' }, lastDays: 11, perWeek: 1, streak: 0, lifts: [
+    { ex: 'e3', w: [70, 72.5, 72.5, 75, 75, 75, 75, 75], r: 8 }, { ex: 'e1', w: [50, 52.5, 52.5, 55, 55, 55, 55, 55], r: 10 }, { ex: 'a1', w: [75, 77.5, 77.5, 80, 80, 80, 80, 80], r: 8 }] },
+  { id: 't5', name: { he: 'תמר אביב', en: 'Tamar Aviv' }, lastDays: 1, perWeek: 3, streak: 7, lifts: [
+    { ex: 'e3', w: [45, 47.5, 50, 50, 52.5, 55, 55, 57.5], r: 8 }, { ex: 'e1', w: [32.5, 35, 35, 37.5, 37.5, 40, 40, 42.5], r: 10 }, { ex: 'a1', w: [35, 35, 37.5, 37.5, 40, 40, 42.5, 42.5], r: 8 }] },
+  { id: 't6', name: { he: 'יובל מזרחי', en: 'Yuval Mizrahi' }, lastDays: 8, perWeek: 2, streak: 1, lifts: [
+    { ex: 'e3', w: [85, 87.5, 90, 90, 90, 90, 90, 90], r: 8 }, { ex: 'e1', w: [65, 67.5, 67.5, 70, 70, 70, 70, 70], r: 10 }, { ex: 'a1', w: [95, 97.5, 100, 100, 100, 100, 100, 100], r: 6 }] },
+  { id: 't7', name: { he: 'ליאור דנן', en: 'Lior Danan' }, lastDays: 4, perWeek: 2, streak: 4, lifts: [
+    { ex: 'e3', w: [60, 62.5, 62.5, 65, 67.5, 67.5, 70, 70], r: 8 }, { ex: 'e1', w: [45, 47.5, 47.5, 50, 50, 52.5, 52.5, 55], r: 10 }, { ex: 'a1', w: [55, 57.5, 57.5, 60, 60, 62.5, 62.5, 65], r: 8 }] },
+  { id: 't8', name: { he: 'רוני גל', en: 'Roni Gal' }, lastDays: 2, perWeek: 3, streak: 6, lifts: [
+    { ex: 'e3', w: [55, 55, 57.5, 60, 60, 62.5, 62.5, 65], r: 8 }, { ex: 'e1', w: [40, 42.5, 42.5, 45, 45, 47.5, 47.5, 50], r: 10 }, { ex: 'a1', w: [50, 52.5, 52.5, 55, 57.5, 57.5, 60, 60], r: 8 }] },
+];
+
+/** A suggestion only: the weight did not change for three sessions. The coach decides. */
+export const readyToRaise = (w: number[]) => w.length >= 3 && w.slice(-3).every(x => x === w[w.length - 1]);
+
+export type BoardKey = 'strong' | 'improved' | 'consistent';
+/** Mock boards. `rows` are the top five values, and `me` is the place of the trainee. */
+export const BOARDS: Record<BoardKey, {
+  label: Name; sub: Name; unit: Name; me: number; of: number; rows: string[];
+}> = {
+  strong: {
+    label: { he: 'החזק ביותר', en: 'Strongest' },
+    sub: { he: 'אוקטובר 2026 · דירוג לפי נפח האימונים הכולל', en: 'October 2026 · ranked by total training volume' },
+    unit: { he: 'ק״ג החודש', en: 'kg this month' },
+    me: 3, of: 48, rows: ['91,500', '78,300', '74,200', '69,800', '66,100'],
+  },
+  improved: {
+    label: { he: 'המשתפר ביותר', en: 'Most improved' },
+    sub: { he: 'אוקטובר 2026 · דירוג לפי עלייה בנפח האימונים לעומת החודש הקודם', en: 'October 2026 · ranked by volume growth vs. last month' },
+    unit: { he: 'נפח החודש', en: 'volume this month' },
+    me: 2, of: 48, rows: BOARD_PCTS,
+  },
+  consistent: {
+    label: { he: 'העקבי ביותר', en: 'Most consistent' },
+    sub: { he: 'אוקטובר 2026 · דירוג לפי מספר האימונים החודש', en: 'October 2026 · ranked by workouts this month' },
+    unit: { he: 'אימונים החודש', en: 'workouts this month' },
+    me: 4, of: 48, rows: ['13', '12', '12', '11', '10'],
+  },
 };
