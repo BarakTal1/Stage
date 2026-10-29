@@ -125,6 +125,9 @@ function CycleEditor({ id, onBack }: { id: string; onBack: () => void }) {
   const [q, setQ] = useState('');
   const [freeHe, setFreeHe] = useState('');
   const [freeEn, setFreeEn] = useState('');
+  // The id and the video are ready before the exercise exists, so the coach adds the video at the moment of creation.
+  const [freeId, setFreeId] = useState(() => 'x' + Date.now().toString(36));
+  const [freeVideo, setFreeVideo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { Promise.all([loadCycle(id), loadExercises()]).then(([c, e]) => { setDraft(c); setExs(e); }); }, [id]);
@@ -163,11 +166,11 @@ function CycleEditor({ id, onBack }: { id: string; onBack: () => void }) {
   const addFree = async () => {
     const he = freeHe.trim(), en = freeEn.trim();
     if (!he && !en) { showToast(s.badDetails); return; }
-    const row: ExerciseRow = { id: 'x' + Date.now().toString(36), he: he || en, en: en || he, video_url: null, step: 2.5 };
+    const row: ExerciseRow = { id: freeId, he: he || en, en: en || he, video_url: freeVideo, step: 2.5 };
     const err = await saveExercise(row);
     if (err) { showToast(`${s.saveFailed}: ${err}`); return; }
     setExs(list => [...list, row]);
-    setFreeHe(''); setFreeEn('');
+    setFreeHe(''); setFreeEn(''); setFreeVideo(null); setFreeId('x' + Date.now().toString(36));
     addToPart(row.id);
   };
 
@@ -294,6 +297,7 @@ function CycleEditor({ id, onBack }: { id: string; onBack: () => void }) {
                 <Field label={s.fNameHe} value={freeHe} onChange={setFreeHe} />
                 <Field label={s.fNameEn} value={freeEn} onChange={setFreeEn} />
               </View>
+              <VideoButtons exId={freeId} hasVideo={!!freeVideo} onUrl={setFreeVideo} message={s.videoAttached} />
               <Btn onPress={addFree} style={[st.wide, { backgroundColor: t.acc, borderColor: t.acc }]}>
                 <T w={700} s={16} c={t.onAcc}>+ {s.add}</T>
               </Btn>
@@ -319,7 +323,7 @@ function CycleEditor({ id, onBack }: { id: string; onBack: () => void }) {
 }
 
 /** Record a video with the camera, or pick one from the gallery. The file goes to storage and the link fills the field. */
-function VideoButtons({ exId, hasVideo, onUrl }: { exId: string; hasVideo: boolean; onUrl: (url: string | null) => void }) {
+function VideoButtons({ exId, hasVideo, onUrl, message }: { exId: string; hasVideo: boolean; onUrl: (url: string | null) => void; message?: string }) {
   const { s, t, showToast } = useApp();
   const st = useStyles();
   const [busy, setBusy] = useState(false);
@@ -333,7 +337,7 @@ function VideoButtons({ exId, hasVideo, onUrl }: { exId: string; hasVideo: boole
     setBusy(false);
     if (r.error || !r.url) { showToast(`${s.saveFailed}: ${r.error}`); return; }
     onUrl(r.url);
-    showToast(s.videoUploaded);
+    showToast(message ?? s.videoUploaded);
   };
   const record = async () => {
     if (busy) return;
