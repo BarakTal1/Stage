@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 import {
   BOARDS, BoardKey, CARD_COLORS, CardColor, DATES, DEF, ExId, INTENSITIES, Intensity, Lang, PART_NAME, Part, SERIES, SeriesKey,
-  ALL_IDS, partTitle, EquivItem, Rank, RuleKey, TRAINEES, THEMES, Trainee, ThemeKey, VARIANT_NAME, Variant, WEEKS, WORKOUTS, WorkoutKey, fmt, partIds, rankFor, readyToRaise, videoUrl,
+  ALL_IDS, partTitle, EquivItem, Rank, RuleKey, TRAINEES, THEMES, Trainee, ThemeKey, VARIANT_NAME, Variant, WEEKS, WORKOUTS, WorkoutKey, fmt, partIds, rankFor, readyToRaise, todayFull, todayLong, todayShort, videoUrl,
 } from './data';
 import { useApp } from './store';
 import { Gender, useAuth } from './auth';
@@ -17,48 +17,36 @@ const scrollStyle = (extra: object = {}) => ({ flex: 1 as const, ...extra });
 
 // ---------------------------------------------------------------- Home
 export function Home() {
-  const { s, t, go, lang, wk, setWk, focus, points, ranks } = useApp();
+  const { s, t, go, lang, wk, setWk, focus, points, ranks, cycleName } = useApp();
   const { profile } = useAuth();
   const firstName = profile?.name.trim().split(/\s+/)[0];
   const myRank = rankFor(points, ranks).rank;
-  const segs = Array.from({ length: 12 }, (_, i) => ({ l: i === 7 ? wk : i % 2 ? 'B' : 'A', done: i < 7, today: i === 7 }));
   const names = (ids: ExId[]) => ids.map(id => DEF[id][lang]);
-  const parts = WORKOUTS[wk].parts.map((p, i, all) => ({
-    num: '0' + (i + 1),
-    label: partTitle(p, lang),
-    lines: p.variants
-      ? (['upper', 'lower'] as Variant[]).map(v => `${VARIANT_NAME[v][lang]}: ${names(p.variants![v]).join(' · ')}`)
-      : p.names ? [p.names.map(n => n[lang]).join(' · ')] : names(partIds(p, 'upper')),
-    line: i < all.length - 1,
-  }));
+  // A part with no exercises does not show to the trainee.
+  const parts = WORKOUTS[wk].parts
+    .map(p => ({
+      label: partTitle(p, lang),
+      lines: (p.variants
+        ? (['upper', 'lower'] as Variant[]).filter(v => p.variants![v].length > 0).map(v => `${VARIANT_NAME[v][lang]}: ${names(p.variants![v]).join(' · ')}`)
+        : p.names ? [p.names.map(n => n[lang]).join(' · ')] : names(partIds(p, 'upper'))
+      ).filter(l => l.trim()),
+    }))
+    .filter(p => p.lines.length > 0)
+    .map((p, i, all) => ({ ...p, num: '0' + (i + 1), line: i < all.length - 1 }));
+  const cycleTitle = cycleName[lang] || cycleName.he || cycleName.en;
   return (
     <Page>
       <ScrollView style={scrollStyle()} contentContainerStyle={{ paddingTop: 10, paddingHorizontal: 20, paddingBottom: 16, gap: 22 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
           <View style={{ gap: 4, flex: 1 }}>
-            <T s={14} lh={1.3}>{s.dateLong}</T>
+            <T s={14} lh={1.3}>{todayLong(lang)}</T>
             <T k="head" s={30} lh={1.1}>{s.hello}{firstName ? `, ${firstName}` : ''}</T>
             <T s={13}>{s.rankLabel}: <T w={700} s={13} c={t.accText}>{myRank[lang]}</T> · <T k="num" w={800} s={13}>{points}</T> {s.pts}</T>
           </View>
           <Image source={t.icon === 'black' ? ICON_BLACK : ICON_WHITE} contentFit="contain" style={{ width: 58, height: 58 / ICON_RATIO, margin: 8 }} />
         </View>
-        <View style={{ gap: 10 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-            <T w={700} s={15}>{s.cycle}</T>
-            <T s={14}><T k="num" w={800} s={14}>7</T> {s.cycleCount}</T>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 4 }}>
-            {segs.map((g, i) => (
-              <View key={i} style={{
-                flex: 1, height: 26, borderRadius: 6, alignItems: 'center', justifyContent: 'center',
-                backgroundColor: g.done ? t.ink : g.today ? t.acc : 'transparent',
-                borderWidth: g.done || g.today ? 0 : 1.5, borderColor: t.ink,
-              }}>
-                <T k="num" w={g.today ? 800 : 500} s={11} c={g.done ? t.bg : g.today ? t.onAcc : t.ink}>{g.l}</T>
-              </View>
-            ))}
-          </View>
-        </View>
+        {/* The count of finished workouts comes back when the app saves real history. */}
+        {!!cycleTitle && <T w={700} s={15}>{cycleTitle}</T>}
         <View style={{ gap: 8 }}>
           <T w={700} s={15}>{s.pickWorkout}</T>
           <Segmented
@@ -70,7 +58,7 @@ export function Home() {
           <View style={{ gap: 8, flex: 1 }}>
             <T w={500} s={14} c={t.onBlock}>{s.today}</T>
             <T k="head" s={46} c={t.onBlock} lh={1}>{focus}</T>
-            <T s={14} c={t.onBlock}>{s.meta}</T>
+            <T s={14} c={t.onBlock}>{parts.length} {s.partsWord}</T>
           </View>
           <View style={{ alignItems: 'center', gap: 2 }}>
             <T w={500} s={14} c={t.onBlock}>{s.workout}</T>
@@ -181,10 +169,14 @@ function ExCard({ orig }: { orig: ExId }) {
     <View style={{ borderWidth: 1.5, borderColor: t.ink, borderRadius: 16, paddingTop: 14, paddingHorizontal: 14, paddingBottom: 12, gap: 10 }}>
       <T w={700} s={17} lh={1.3}>{def[lang]}</T>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Btn onPress={() => Linking.openURL(videoUrl(id))} label={s.video}
-          style={{ height: 34, paddingHorizontal: 12, borderRadius: 999, backgroundColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
-          <T w={700} s={13} c={t.bg}>▶ {s.video}</T>
-        </Btn>
+        {videoUrl(id) ? (
+          <Btn onPress={() => Linking.openURL(videoUrl(id) as string)} label={s.video}
+            style={{ height: 34, paddingHorizontal: 12, borderRadius: 999, backgroundColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
+            <T w={700} s={13} c={t.bg}>▶ {s.video}</T>
+          </Btn>
+        ) : (
+          <T s={13}>{s.noVideo}</T>
+        )}
         {role === 'coach' && (
           <Btn onPress={() => setSheet(true)} label={s.swap}
             style={{ height: 34, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
@@ -236,7 +228,7 @@ export function Log() {
       </View>
       <ScrollView style={scrollStyle()} contentContainerStyle={{ paddingTop: 4, paddingHorizontal: 20, paddingBottom: 20 }}>
         <T k="head" s={32} lh={1.1}>{s.logTitle}</T>
-        <T s={15} style={{ marginTop: 6 }}>{s.workout} <T k="num" w={800} s={15}>{wk}</T> · {focus} · 27.10</T>
+        <T s={15} style={{ marginTop: 6 }}>{s.workout} <T k="num" w={800} s={15}>{wk}</T> · {focus} · {todayShort()}</T>
         {parts.map(({ p, num, idx, ids }) => (
           <View key={num} style={{ gap: 10, marginTop: 24 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
@@ -292,7 +284,7 @@ export function Summary() {
       </View>
       <ScrollView style={scrollStyle()} contentContainerStyle={{ paddingTop: 4, paddingHorizontal: 20, paddingBottom: 16 }}>
         <T k="head" s={32} lh={1.1} c={t.sumInk}>{s.workout} <T k="num" w={800} s={32} c={t.sumInk}>{wk}</T> · {focus}</T>
-        <T s={15} c={t.sumInk} style={{ marginTop: 6 }}>{s.dateFull}</T>
+        <T s={15} c={t.sumInk} style={{ marginTop: 6 }}>{todayFull(lang)}</T>
         <T w={500} s={16} c={t.sumInk} style={{ marginTop: 28 }}>{s.totalLabel}</T>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 4 }}>
           <T k="num" w={800} s={96} lh={0.95} c={t.sumNum} ltr style={{ letterSpacing: -1.9 }}>{fmt(total)}</T>
@@ -378,7 +370,7 @@ const PW = 270, PH = 480;
 export function Share() {
   const {
     s, t, he, go, shareMode, setShareMode, cardColor, setCardColor, cardLang, setCardLang,
-    clearInk, setClearInk, frame, showToast, period, setPeriod, photo, setPhoto, rollEquiv, awardShare,
+    clearInk, setClearInk, frame, showToast, period, setPeriod, photo, setPhoto, rollEquiv,
   } = useApp();
   const clear = shareMode === 'clear';
   const pickPhoto = async () => {
@@ -454,11 +446,12 @@ export function Share() {
         )}
       </ScrollView>
       <View style={{ paddingHorizontal: 20, paddingBottom: frame ? 34 : 16, gap: 10 }}>
-        <Btn onPress={() => { awardShare(); showToast(s.toastInsta); }} style={{ height: 56, borderRadius: 16, backgroundColor: t.acc, alignItems: 'center', justifyContent: 'center' }}>
-          <T w={700} s={18} c={t.onAcc}>{s.insta}</T>
+        {/* Sharing and saving the card are not built yet. The buttons say so and give no points. */}
+        <Btn onPress={() => showToast(s.soonToast)} style={{ height: 56, borderRadius: 16, backgroundColor: t.acc, alignItems: 'center', justifyContent: 'center', opacity: 0.55 }}>
+          <T w={700} s={18} c={t.onAcc}>{s.insta} · {s.soon}</T>
         </Btn>
-        <Btn onPress={() => showToast(s.toastSave)} style={{ height: 56, borderRadius: 16, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
-          <T w={700} s={17}>{s.saveRoll}</T>
+        <Btn onPress={() => showToast(s.soonToast)} style={{ height: 56, borderRadius: 16, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center', opacity: 0.55 }}>
+          <T w={700} s={17}>{s.saveRoll} · {s.soon}</T>
         </Btn>
       </View>
     </Page>

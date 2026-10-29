@@ -52,6 +52,8 @@ type Ctx = {
   toast: string | null; showToast: (msg: string) => void;
   /** Loads the active cycle from the database into the app. */
   reloadCycle: () => Promise<void>;
+  /** The name of the active cycle, as the studio typed it. */
+  cycleName: { he: string; en: string };
 };
 
 const AppCtx = createContext<Ctx>(null as unknown as Ctx);
@@ -171,10 +173,12 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
   }, [userId]);
 
   const [cycleVersion, setCycleVersion] = useState(0);
+  const [cycleName, setCycleName] = useState({ he: '', en: '' });
   const reloadCycle = useCallback(async () => {
     const r = await loadActiveCycle();
     if (!r) return;
     applyCycle(r.exercises, r.cycle.workouts);
+    setCycleName({ he: r.cycle.name_he, en: r.cycle.name_en });
     setEx(initialSets());
     setCycleVersion(v => v + 1);
   }, []);
@@ -239,9 +243,9 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
       cardColor: cardColorRaw ?? t.card, setCardColor,
       cardLang: cardLangRaw ?? lang, setCardLang,
       clearInk, setClearInk,
-      toast, showToast, reloadCycle,
+      toast, showToast, reloadCycle, cycleName,
     };
-  }, [cycleVersion, reloadCycle, lang, he, s, t, themeKey, screen, frame, ex, bump, setWeight, intensity, setIntensity, resolve, swapEx, rangeFor, wk, variants, chartEx, hidden, period, role, isAdmin, canPreview, previewing, photo, equivItems, ranks, rankLists, rules, setEquivItems, setRankList, setRules, roll, points, earned, rankUp, award, shareMode,
+  }, [cycleVersion, cycleName, reloadCycle, lang, he, s, t, themeKey, screen, frame, ex, bump, setWeight, intensity, setIntensity, resolve, swapEx, rangeFor, wk, variants, chartEx, hidden, period, role, isAdmin, canPreview, previewing, photo, equivItems, ranks, rankLists, rules, setEquivItems, setRankList, setRules, roll, points, earned, rankUp, award, shareMode,
       cardColorRaw, cardLangRaw, clearInk, toast, showToast]);
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

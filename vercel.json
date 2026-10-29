@@ -1,6 +1,9 @@
 {
   "framework": null,
   "installCommand": "npm install",
-  "buildCommand": "npx expo export --platform web",
-  "outputDirectory": "dist"
+  "buildCommand": "npx expo export --platform web && node scripts/patch-html.js",
+  "outputDirectory": "dist",
+  "headers": [
+    { "source": "/(.*)", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] }
+  ]
 }

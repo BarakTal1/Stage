@@ -129,3 +129,14 @@ export async function uploadExerciseVideo(exId: string, uri: string, mime?: stri
     return { url: null, error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+/** For each exercise, in how many cycles it is used. */
+export async function loadExerciseUsage(): Promise<Record<string, number>> {
+  const { data } = await supabase.from('cycle_part_items').select('exercise_id, cycle_parts(cycle_id)');
+  const cycles: Record<string, Set<string>> = {};
+  for (const row of (data as unknown as { exercise_id: string; cycle_parts: { cycle_id: string } | null }[] | null) ?? []) {
+    if (!row.cycle_parts) continue;
+    (cycles[row.exercise_id] ??= new Set()).add(row.cycle_parts.cycle_id);
+  }
+  return Object.fromEntries(Object.entries(cycles).map(([id, set]) => [id, set.size]));
+}

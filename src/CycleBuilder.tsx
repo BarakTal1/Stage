@@ -8,7 +8,7 @@ import { Field } from './screens';
 import { CyclePart, CycleWorkout, ExerciseRow, PART_NAME, PartKind, VARIANT_NAME, Variant, WorkoutKey } from './data';
 import {
   CycleDetail, CycleListItem, MAX_VIDEO_BYTES, PART_KINDS, TRACKED, WORKOUT_KEYS, activateCycle, cloneCycle, deleteCycle, deleteExercise,
-  listCycles, loadCycle, loadExercises, newPart, saveCycle, saveExercise, uploadExerciseVideo,
+  listCycles, loadCycle, loadExerciseUsage, loadExercises, newPart, saveCycle, saveExercise, uploadExerciseVideo,
 } from './cycle';
 
 const num = (v: string) => { const n = parseFloat(v.replace(',', '.')); return isNaN(n) ? 0 : n; };
@@ -129,6 +129,9 @@ function CycleEditor({ id, onBack }: { id: string; onBack: () => void }) {
   const [freeId, setFreeId] = useState(() => 'x' + Date.now().toString(36));
   const [freeVideo, setFreeVideo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [warnEmpty, setWarnEmpty] = useState(false);
+  // Any edit takes the warning back, so the coach must confirm again.
+  useEffect(() => { setWarnEmpty(false); }, [draft]);
 
   useEffect(() => { Promise.all([loadCycle(id), loadExercises()]).then(([c, e]) => { setDraft(c); setExs(e); }); }, [id]);
   if (!draft) return <Page><Header onBack={onBack} /><T s={14} style={{ padding: 20 }}>{s.loading}</T></Page>;
@@ -178,6 +181,8 @@ function CycleEditor({ id, onBack }: { id: string; onBack: () => void }) {
     if (busy) return;
     const badReps = draft.workouts.some(w => w.parts.some(p => TRACKED.includes(p.kind) && (!p.reps_min || !p.reps_max || p.reps_min < 1 || p.reps_max < p.reps_min)));
     if (badReps) { showToast(s.badDetails); return; }
+    const hasEmpty = draft.workouts.some(w => w.parts.some(p => p.items.length === 0));
+    if (hasEmpty && !warnEmpty) { setWarnEmpty(true); return; }
     setBusy(true);
     const err = await saveCycle(draft);
     if (!err && draft.active) await reloadCycle();
@@ -264,6 +269,7 @@ function CycleEditor({ id, onBack }: { id: string; onBack: () => void }) {
           </View>
         ))}
         <Btn onPress={() => setAddingPart(true)} style={st.wide}><T w={700} s={16}>+ {s.addPart}</T></Btn>
+        {warnEmpty && <T s={13} lh={1.4} c={t.accText}>{s.emptyPartsWarn}</T>}
         <Btn onPress={save} style={[st.wide, { backgroundColor: t.acc, borderColor: t.acc, opacity: busy ? 0.6 : 1 }]}>
           <T w={700} s={16} c={t.onAcc}>{s.saveCycle}</T>
         </Btn>
@@ -380,18 +386,25 @@ function Library() {
   const [removed, setRemoved] = useState<string[]>([]);
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { loadExercises().then(setRows); }, []);
+  const [usage, setUsage] = useState<Record<string, number>>({});
+  const [warnDup, setWarnDup] = useState<string[]>([]);
+  useEffect(() => { loadExercises().then(setRows); loadExerciseUsage().then(setUsage); }, []);
+  // Any edit takes the duplicate warning back, so the coach must confirm again.
+  useEffect(() => { setWarnDup([]); }, [rows]);
   if (!rows) return <T s={14}>{s.loading}</T>;
 
   const patch = (id: string, fn: (e: ExerciseRow) => ExerciseRow) => setRows(rows.map(r => (r.id === id ? fn(r) : r)));
   const save = async () => {
     if (busy) return;
     if (rows.some(r => !r.he.trim() || !r.en.trim())) { showToast(s.badDetails); return; }
+    const seen = new Set<string>(), dups = new Set<string>();
+    for (const r of rows) { const k = r.he.trim(); if (seen.has(k)) dups.add(k); seen.add(k); }
+    if (dups.size && warnDup.length === 0) { setWarnDup([...dups]); return; }
     setBusy(true);
     let err: string | null = null;
     for (const id of removed) { err = err ?? (await deleteExercise(id)); }
     for (const r of rows) { err = err ?? (await saveExercise(r)); }
-    if (!err) { setRemoved([]); await reloadCycle(); }
+    if (!err) { setRemoved([]); await reloadCycle(); loadExerciseUsage().then(setUsage); }
     setBusy(false);
     showToast(err ? `${s.saveFailed}: ${err}` : s.detailsSaved);
   };
@@ -411,10 +424,14 @@ function Library() {
           </View>
           <Field label={s.videoLink} value={e.video_url ?? ''} onChange={v => patch(e.id, x => ({ ...x, video_url: v }))} />
           <VideoButtons exId={e.id} hasVideo={!!e.video_url} onUrl={url => patch(e.id, x => ({ ...x, video_url: url }))} />
+          <T s={12} c={usage[e.id] ? undefined : t.accText}>{usage[e.id] ? s.usedIn.replace('{n}', String(usage[e.id])) : s.notUsed}</T>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
             <Field num label={s.stepKg} value={e.step} onChange={v => patch(e.id, x => ({ ...x, step: num(v) }))} />
             <Btn
-              onPress={() => { setRows(rows.filter(r => r.id !== e.id)); setRemoved(r => [...r, e.id]); }}
+              onPress={() => {
+                if (usage[e.id]) { showToast(s.cannotDeleteUsed); return; }
+                setRows(rows.filter(r => r.id !== e.id)); setRemoved(r => [...r, e.id]);
+              }}
               style={{ height: 42, paddingHorizontal: 10, justifyContent: 'center' }}>
               <T w={700} s={13} c={t.accText}>{s.deleteBtn}</T>
             </Btn>
@@ -426,6 +443,7 @@ function Library() {
         style={st.wide}>
         <T w={700} s={16}>+ {s.addExercise}</T>
       </Btn>
+      {warnDup.length > 0 && <T s={13} lh={1.4} c={t.accText}>{s.dupWarn.replace('{names}', warnDup.join(', '))}</T>}
       <Btn onPress={save} style={[st.wide, { backgroundColor: t.acc, borderColor: t.acc, opacity: busy ? 0.6 : 1 }]}>
         <T w={700} s={16} c={t.onAcc}>{s.saveLib}</T>
       </Btn>

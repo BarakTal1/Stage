@@ -1,9 +1,11 @@
 import React from 'react';
 import { View, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
-import { CARD_STR, CardColor, Lang, DEF, MONTH, WORKOUTS, equivText } from './data';
+import { CARD_STR, CardColor, Lang, DEF, MONTH, WORKOUTS, equivText, todayNum } from './data';
 import { T, LOGO_BLACK, LOGO_RATIO, LOGO_WHITE } from './ui';
 import { useApp } from './store';
+
+const SHOW_MOCK_STATS = false;
 
 const FULL = {
   red: { bg: '#CB0709', ink: '#FFFFFF', num: '#FFFFFF', chipBg: '#FFFFFF', chipFg: '#CB0709' },
@@ -33,8 +35,11 @@ export function ShareCard({ variant, ink, lang, k }: {
   const extras: string[] = [];
   if (cardPrs.length) extras.push('prs');
   if (pct > 0) extras.push('progress');
-  extras.push('streak');
-  if (!hidden) extras.push('rank');
+  // The streak and the rank are mock values until the app saves real history. They stay off the card.
+  if (SHOW_MOCK_STATS) {
+    extras.push('streak');
+    if (!hidden) extras.push('rank');
+  }
   const show = extras.slice(0, 2);
   const showPRs = show.includes('prs'), showProgress = show.includes('progress');
   const showStreak = show.includes('streak'), showRank = show.includes('rank');
@@ -44,7 +49,7 @@ export function ShareCard({ variant, ink, lang, k }: {
   const commas = (totalStr.match(/,/g) || []).length;
   const em = digits * 0.64 + commas * 0.28;
   const focus = WORKOUTS[wk].focus[lang];
-  const date = '27.10.2026';
+  const date = todayNum();
   const totalLabel = month ? st.totalMonth : st.total;
   const fromLast = month ? st.fromLastMonth : st.fromLast;
   const equiv = equivText(total, equivFor(total), lang);
