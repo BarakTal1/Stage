@@ -45,6 +45,9 @@ type Ctx = {
   saveWorkout: () => void; awardShare: () => void;
   rankUp: Rank | null; dismissRankUp: () => void;
   photo: string | null; setPhoto: (uri: string | null) => void;
+  /** The photo behind the story card with a clear background, and the option to darken it for the text. */
+  bgPhoto: string | null; setBgPhoto: (uri: string | null) => void;
+  bgDim: boolean; setBgDim: (on: boolean) => void;
   shareMode: 'full' | 'clear'; setShareMode: (m: 'full' | 'clear') => void;
   cardColor: CardColor; setCardColor: (c: CardColor) => void;
   cardLang: Lang; setCardLang: (l: Lang) => void;
@@ -89,6 +92,8 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
   const live = useRef({ points: INITIAL_POINTS, ranks: RANKS_DEFAULT, saved: false, shared: false });
   live.current.ranks = ranks;
   const [photo, setPhoto] = useState<string | null>(null);
+  const [bgPhoto, setBgPhoto] = useState<string | null>(null);
+  const [bgDim, setBgDim] = useState(false);
   const [shareMode, setShareMode] = useState<'full' | 'clear'>('full');
   const [cardColorRaw, setCardColor] = useState<CardColor | null>(null);
   const [cardLangRaw, setCardLang] = useState<Lang | null>(null);
@@ -220,7 +225,7 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
       go: (sc: Screen) => { if (sc === 'home') live.current.saved = false; setScreen(sc); },
       chartEx, setChartEx,
       hidden, toggleHidden: () => setHidden(h => !h),
-      period, setPeriod, role, isAdmin, canPreview, viewAsTrainee: previewing, setViewAsTrainee, photo, setPhoto,
+      period, setPeriod, role, isAdmin, canPreview, viewAsTrainee: previewing, setViewAsTrainee, photo, setPhoto, bgPhoto, setBgPhoto, bgDim, setBgDim,
       equivItems, setEquivItems, ranks, rankLists, setRankList, rules, setRules,
       roll, rollEquiv: () => setRoll(Math.random()), equivFor: (tot: number) => pickEquiv(equivItems, tot, roll),
       points, earned, rankUp, dismissRankUp: () => setRankUp(null),
@@ -245,7 +250,7 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
       clearInk, setClearInk,
       toast, showToast, reloadCycle, cycleName,
     };
-  }, [cycleVersion, cycleName, reloadCycle, lang, he, s, t, themeKey, screen, frame, ex, bump, setWeight, intensity, setIntensity, resolve, swapEx, rangeFor, wk, variants, chartEx, hidden, period, role, isAdmin, canPreview, previewing, photo, equivItems, ranks, rankLists, rules, setEquivItems, setRankList, setRules, roll, points, earned, rankUp, award, shareMode,
+  }, [cycleVersion, cycleName, reloadCycle, lang, he, s, t, themeKey, screen, frame, ex, bump, setWeight, intensity, setIntensity, resolve, swapEx, rangeFor, wk, variants, chartEx, hidden, period, role, isAdmin, canPreview, previewing, photo, bgPhoto, bgDim, equivItems, ranks, rankLists, rules, setEquivItems, setRankList, setRules, roll, points, earned, rankUp, award, shareMode,
       cardColorRaw, cardLangRaw, clearInk, toast, showToast]);
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

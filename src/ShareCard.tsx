@@ -21,7 +21,7 @@ const CLEAR = {
 export function ShareCard({ variant, ink, lang, k }: {
   variant: CardColor | 'clear'; ink: 'light' | 'dark'; lang: Lang; k: number;
 }) {
-  const { total: workoutTotal, pct: workoutPct, prs, hidden, wk, period, photo, equivFor } = useApp();
+  const { total: workoutTotal, pct: workoutPct, prs, hidden, wk, period, photo, equivFor, bgPhoto, bgDim } = useApp();
   const month = period === 'month';
   const total = month ? MONTH.total : workoutTotal;
   const pct = month ? MONTH.pct : workoutPct;
@@ -140,8 +140,12 @@ export function ShareCard({ variant, ink, lang, k }: {
   const c = CLEAR[ink];
   const numSize = Math.min(270, Math.floor(720 / em));
   const pill = { borderWidth: z(4), borderColor: c.ink, paddingVertical: z(18), paddingHorizontal: z(36), gap: z(18) };
+  const fill = { position: 'absolute', left: 0, top: 0, width: z(1080), height: z(1920) } as const;
   return (
     <View style={root}>
+      {/* The photo the trainee chose fills the card. Instagram shows a transparent picture as black. */}
+      {bgPhoto && <Image source={{ uri: bgPhoto }} contentFit="cover" style={fill} />}
+      {bgPhoto && bgDim && <View style={[fill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />}
       <View style={{ flex: 1, paddingTop: z(200), paddingBottom: z(240), paddingHorizontal: z(88), alignItems: 'flex-start', gap: z(20) }}>
         <View style={{ gap: z(36), alignSelf: 'stretch' }}>
           <Image source={c.white ? LOGO_WHITE : LOGO_BLACK} contentFit="contain" style={{ width: z(380), height: z(380) / LOGO_RATIO }} />

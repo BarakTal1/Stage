@@ -9,7 +9,7 @@ import {
 import { useApp } from './store';
 import { Gender, useAuth } from './auth';
 import { ShareCard } from './ShareCard';
-import { cardToPng, downloadPng, sharePng } from './shareImage';
+import { cardToPng, downloadPng, sharePng, shrinkImage } from './shareImage';
 import {
   Btn, Chev, CloseX, ICON_BLACK, ICON_RATIO, ICON_WHITE, Image, Page, PreviewBg, Segmented, T, TabBar,
 } from './ui';
@@ -371,7 +371,7 @@ const PW = 270, PH = 480;
 export function Share() {
   const {
     s, t, he, go, shareMode, setShareMode, cardColor, setCardColor, cardLang, setCardLang,
-    clearInk, setClearInk, frame, showToast, period, setPeriod, photo, setPhoto, rollEquiv, roll, awardShare,
+    clearInk, setClearInk, frame, showToast, period, setPeriod, photo, setPhoto, rollEquiv, roll, awardShare, bgPhoto, setBgPhoto, bgDim, setBgDim,
   } = useApp();
   const clear = shareMode === 'clear';
   const isWeb = Platform.OS === 'web';
@@ -379,23 +379,33 @@ export function Share() {
   const exportRef = React.useRef<React.ComponentRef<typeof View>>(null);
   const [png, setPng] = React.useState<Blob | null>(null);
   const [busy, setBusy] = React.useState(false);
-  const cardKey = [shareMode, cardColor, cardLang, clearInk, period, photo, roll].join('|');
+  const [failed, setFailed] = React.useState(false);
+  const [tries, setTries] = React.useState(0);
+  const cardKey = [shareMode, cardColor, cardLang, clearInk, period, photo, bgPhoto, bgDim, roll, tries].join('|');
   React.useEffect(() => {
     if (!isWeb) return;
     setPng(null);
+    setFailed(false);
     let live = true;
     const timer = setTimeout(async () => {
       try {
-        const blob = await cardToPng(exportRef.current as unknown as HTMLElement);
+        // Stop after 20 seconds, so the button never says "preparing" for ever.
+        const blob = await Promise.race([
+          cardToPng(exportRef.current as unknown as HTMLElement),
+          new Promise<never>((_, fail) => setTimeout(() => fail(new Error('The card took too long to draw')), 20000)),
+        ]);
         if (live) setPng(blob);
       } catch (e) {
         console.warn('The story card could not be drawn', e);
-        if (live) setPng(null);
+        if (live) { setPng(null); setFailed(true); }
       }
     }, 600);
     return () => { live = false; clearTimeout(timer); };
   }, [isWeb, cardKey]);
   const onShare = async () => {
+    // A clear card needs a photo. Instagram shows a transparent picture as black.
+    if (clear && !bgPhoto) { pickBgPhoto(); return; }
+    if (failed) { setTries(n => n + 1); return; }
     if (!png) { showToast(s.sharePreparing); return; }
     if (busy) return;
     setBusy(true);
@@ -412,10 +422,14 @@ export function Share() {
     downloadPng(png, 'stage-story.png');
     showToast(s.sharedSaved);
   };
-  const pickPhoto = async () => {
-    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: true, aspect: [1, 1] });
-    if (r.assets?.[0]) setPhoto(r.assets[0].uri);
+  const pickImage = async (aspect: [number, number], set: (uri: string) => void) => {
+    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: true, aspect });
+    const uri = r.assets?.[0]?.uri;
+    if (!uri) return;
+    try { set(isWeb ? await shrinkImage(uri) : uri); } catch { set(uri); }
   };
+  const pickPhoto = () => pickImage([1, 1], setPhoto);
+  const pickBgPhoto = () => pickImage([9, 16], setBgPhoto);
   return (
     <Page>
       <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 }}>
@@ -437,7 +451,7 @@ export function Share() {
       </View>
       <ScrollView style={scrollStyle()} contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingVertical: 12 }}>
         <View style={{ width: PW, height: PH, borderRadius: 12, overflow: 'hidden', direction: 'ltr' } as ViewStyle}>
-          {clear && <PreviewBg kind={clearInk === 'light' ? 'stripes' : 'checker'} width={PW} height={PH} />}
+          {clear && !bgPhoto && <PreviewBg kind={clearInk === 'light' ? 'stripes' : 'checker'} width={PW} height={PH} />}
           <ShareCard variant={clear ? 'clear' : cardColor} ink={clearInk} lang={cardLang} k={PW / 1080} />
         </View>
         {clear ? (
@@ -471,6 +485,31 @@ export function Share() {
         <Btn onPress={rollEquiv} style={{ width: PW, height: 38, borderRadius: 12, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
           <T w={700} s={14}>🎲 {s.rollAgain}</T>
         </Btn>
+        {clear && (
+          <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', width: PW, gap: 10 }}>
+              <Btn onPress={pickBgPhoto} style={{ flex: 1, height: 38, borderRadius: 12, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
+                <T w={700} s={14}>{bgPhoto ? s.changeBgPhoto : s.addBgPhoto}</T>
+              </Btn>
+              {bgPhoto && (
+                <Btn onPress={() => setBgPhoto(null)} style={{ height: 38, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' }}>
+                  <T w={500} s={14}>{s.removePhoto}</T>
+                </Btn>
+              )}
+            </View>
+            {bgPhoto ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: PW, gap: 10 }}>
+                <T w={500} s={13}>{s.dimPhoto}</T>
+                <Segmented
+                  value={bgDim ? 'on' : 'off'} onChange={(v: 'on' | 'off') => setBgDim(v === 'on')} ink={t.ink} bg={t.bg} h={30} size={13} radius={999} flex={false}
+                  options={[{ key: 'off', label: s.dimOff }, { key: 'on', label: s.dimOn }]}
+                />
+              </View>
+            ) : (
+              <T s={12} lh={1.4} style={{ width: PW }}>{s.bgNeedHint}</T>
+            )}
+          </>
+        )}
         {!clear && (
           <View style={{ flexDirection: 'row', alignItems: 'center', width: PW, gap: 10 }}>
             <Btn onPress={pickPhoto} style={{ flex: 1, height: 38, borderRadius: 12, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
@@ -486,10 +525,10 @@ export function Share() {
       </ScrollView>
       <View style={{ paddingHorizontal: 20, paddingBottom: frame ? 34 : 16, gap: 10 }}>
         {/* On the web the card goes to the share sheet. The phone app comes later, so those buttons say soon. */}
-        <Btn onPress={isWeb ? onShare : () => showToast(s.soonToast)} style={{ height: 56, borderRadius: 16, backgroundColor: t.acc, alignItems: 'center', justifyContent: 'center', opacity: isWeb && png && !busy ? 1 : 0.55 }}>
-          <T w={700} s={18} c={t.onAcc}>{s.insta}{!isWeb ? ` · ${s.soon}` : !png ? ` · ${s.sharePreparing}` : ''}</T>
+        <Btn onPress={isWeb ? onShare : () => showToast(s.soonToast)} style={{ height: 56, borderRadius: 16, backgroundColor: t.acc, alignItems: 'center', justifyContent: 'center', opacity: isWeb && (png || failed || (clear && !bgPhoto)) && !busy ? 1 : 0.55 }}>
+          <T w={700} s={18} c={t.onAcc}>{clear && !bgPhoto ? s.addBgPhoto : `${s.insta}${!isWeb ? ` · ${s.soon}` : failed ? ` · ${s.shareRetry}` : !png ? ` · ${s.sharePreparing}` : ''}`}</T>
         </Btn>
-        {isWeb && png && <T s={12} style={{ textAlign: 'center' }}>{s.shareHint}</T>}
+        {isWeb && png && !(clear && !bgPhoto) && <T s={12} style={{ textAlign: 'center' }}>{s.shareHint}</T>}
         <Btn onPress={isWeb ? onDownload : () => showToast(s.soonToast)} style={{ height: 56, borderRadius: 16, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center', opacity: isWeb && png ? 1 : 0.55 }}>
           <T w={700} s={17}>{isWeb ? s.downloadImage : `${s.saveRoll} · ${s.soon}`}</T>
         </Btn>

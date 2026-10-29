@@ -49,3 +49,20 @@ export async function sharePng(blob: Blob, name: string): Promise<ShareResult> {
   downloadPng(blob, name);
   return 'downloaded';
 }
+
+/**
+ * Makes a picked photo smaller and returns it as a data link. Web only.
+ * A phone photo can be 12 megapixels, and the card is 1080 x 1920, so 2200 pixels on the long side is enough.
+ * The data link matters: the card drawing library cannot read a "blob:" link and fails with an empty error.
+ */
+export async function shrinkImage(uri: string, maxSide = 2200): Promise<string> {
+  const img = new Image();
+  // The load event, not decode(): decode() waits for a screen frame and stalls in a background tab.
+  await new Promise((done, fail) => { img.onload = () => done(null); img.onerror = () => fail(new Error('The photo could not be read')); img.src = uri; });
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(img.naturalWidth * scale);
+  canvas.height = Math.round(img.naturalHeight * scale);
+  canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.9);
+}
