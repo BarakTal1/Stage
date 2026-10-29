@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { Gender, useAuth } from './auth';
 import { loadLists, saveEquiv, saveRanks, saveRules } from './lists';
 import {
-  EQUIV_DEFAULT, EquivItem, INITIAL_POINTS, MOCK_STREAK_WEEKS, RANKS_DEFAULT, RULES_DEFAULT, Rank, RuleKey, pickEquiv, rankFor,
+  EQUIV_DEFAULT, EquivItem, INITIAL_POINTS, MOCK_STREAK_WEEKS, RANKS_DEFAULT, RANKS_FEMALE_DEFAULT, RULES_DEFAULT, Rank, RuleKey, pickEquiv, rankFor,
   CardColor, DEFAULT_VARIANT, DEF, ExId, Intensity, Lang, S, SeriesKey, SetRow, Strings, THEMES, Theme, ThemeKey,
   Period, Role, Variant, WORKOUTS, WorkoutKey, fmt, initialSets, repRange, workoutIds,
 } from './data';
@@ -69,7 +69,7 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
   const isAdmin = profile?.role === 'admin';
   const role: Role = profile && profile.role !== 'trainee' ? 'coach' : 'trainee';
   const [equivItems, setEquivRaw] = useState(EQUIV_DEFAULT);
-  const [rankLists, setRankLists] = useState<Record<Gender, Rank[]>>({ male: RANKS_DEFAULT, female: RANKS_DEFAULT });
+  const [rankLists, setRankLists] = useState<Record<Gender, Rank[]>>({ male: RANKS_DEFAULT, female: RANKS_FEMALE_DEFAULT });
   const ranks = rankLists[profile?.gender ?? 'male'];
   const [rules, setRulesRaw] = useState(RULES_DEFAULT);
   const [roll, setRoll] = useState(Math.random);

@@ -351,6 +351,17 @@ export const RANKS_DEFAULT: Rank[] = [
   { id: 'r6', he: 'מחסל פיתות', en: 'Pita Crusher', min: 2500 },
   { id: 'r7', he: 'אגדת הסטייג׳', en: 'Stage Legend', min: 4000 },
 ];
+/** The women's list has its own nicknames. The studio edits both lists in the admin screen. */
+export const RANKS_FEMALE_DEFAULT: Rank[] = [
+  { id: 'f0', he: 'זרועות ספגטי', en: 'Spaghetti Arms', min: 0 },
+  { id: 'f1', he: 'מלכת המזרן', en: 'Mat Queen', min: 100 },
+  { id: 'f2', he: 'סוחבת סלי שוק', en: 'Shuk Basket Hauler', min: 250 },
+  { id: 'f3', he: 'שוברת מוטות', en: 'Bar Bender', min: 500 },
+  { id: 'f4', he: 'לביאה בהכשרה', en: 'Lioness in Training', min: 900 },
+  { id: 'f5', he: 'קיסרית הסופרסט', en: 'Superset Empress', min: 1500 },
+  { id: 'f6', he: 'טורפת חומוס', en: 'Hummus Devourer', min: 2500 },
+  { id: 'f7', he: 'אלת הסטייג׳', en: 'Stage Goddess', min: 4000 },
+];
 // Starts just under the Hippo rank, so the first saved workout shows the rank-up notice.
 export const INITIAL_POINTS = 880;
 export const MOCK_STREAK_WEEKS = 5;
