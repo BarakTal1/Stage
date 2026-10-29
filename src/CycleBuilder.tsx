@@ -7,8 +7,8 @@ import { Btn, Page, Segmented, T } from './ui';
 import { Field } from './screens';
 import { CyclePart, CycleWorkout, ExerciseRow, PART_NAME, PartKind, VARIANT_NAME, Variant, WorkoutKey } from './data';
 import {
-  CycleDetail, CycleListItem, MAX_VIDEO_BYTES, TRACKED, WORKOUT_KEYS, activateCycle, cloneCycle, deleteCycle, deleteExercise,
-  listCycles, loadCycle, loadExercises, saveCycle, saveExercise, uploadExerciseVideo,
+  CycleDetail, CycleListItem, MAX_VIDEO_BYTES, PART_KINDS, TRACKED, WORKOUT_KEYS, activateCycle, cloneCycle, deleteCycle, deleteExercise,
+  listCycles, loadCycle, loadExercises, newPart, saveCycle, saveExercise, uploadExerciseVideo,
 } from './cycle';
 
 const num = (v: string) => { const n = parseFloat(v.replace(',', '.')); return isNaN(n) ? 0 : n; };
@@ -119,8 +119,12 @@ function CycleEditor({ id, onBack }: { id: string; onBack: () => void }) {
   const [draft, setDraft] = useState<CycleDetail | null>(null);
   const [exs, setExs] = useState<ExerciseRow[]>([]);
   const [wk, setWk] = useState<WorkoutKey>('B');
-  const [pick, setPick] = useState<{ kind: PartKind; variant: Variant | null } | null>(null);
+  const [pick, setPick] = useState<{ index: number; variant: Variant | null } | null>(null);
+  const [addingPart, setAddingPart] = useState(false);
+  const [confirmPart, setConfirmPart] = useState<number | null>(null);
   const [q, setQ] = useState('');
+  const [freeHe, setFreeHe] = useState('');
+  const [freeEn, setFreeEn] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { Promise.all([loadCycle(id), loadExercises()]).then(([c, e]) => { setDraft(c); setExs(e); }); }, [id]);
@@ -130,16 +134,42 @@ function CycleEditor({ id, onBack }: { id: string; onBack: () => void }) {
   const workout = draft.workouts.find(w => w.key === wk) as CycleWorkout;
   const patchWorkout = (fn: (w: CycleWorkout) => CycleWorkout) =>
     setDraft(d => (d ? { ...d, workouts: d.workouts.map(w => (w.key === wk ? fn(w) : w)) } : d));
-  const patchPart = (kind: PartKind, fn: (p: CyclePart) => CyclePart) =>
-    patchWorkout(w => ({ ...w, parts: w.parts.map(p => (p.kind === kind ? fn(p) : p)) }));
+  const patchPart = (index: number, fn: (p: CyclePart) => CyclePart) =>
+    patchWorkout(w => ({ ...w, parts: w.parts.map((p, i) => (i === index ? fn(p) : p)) }));
+  const moveItem = (index: number, d: number) =>
+    patchWorkout(w => {
+      const parts = [...w.parts];
+      const j = index + d;
+      if (j < 0 || j >= parts.length) return w;
+      [parts[index], parts[j]] = [parts[j], parts[index]];
+      return { ...w, parts };
+    });
 
   const idsOf = (p: CyclePart, v: Variant | null) =>
     p.items.filter(i => i.variant === v).sort((a, b) => a.position - b.position).map(i => i.exercise_id);
-  const setIds = (kind: PartKind, v: Variant | null, ids: string[]) =>
-    patchPart(kind, p => ({
+  const setIds = (index: number, v: Variant | null, ids: string[]) =>
+    patchPart(index, p => ({
       ...p,
       items: [...p.items.filter(i => i.variant !== v), ...ids.map((exercise_id, position) => ({ variant: v, position, exercise_id }))],
     }));
+  const addToPart = (exId: string) => {
+    if (!pick) return;
+    const part = workout.parts[pick.index];
+    setIds(pick.index, pick.variant, [...idsOf(part, pick.variant), exId]);
+    setPick(null);
+  };
+
+  /** A free exercise is a new library exercise. It works like any other: weights, video, and reuse in later cycles. */
+  const addFree = async () => {
+    const he = freeHe.trim(), en = freeEn.trim();
+    if (!he && !en) { showToast(s.badDetails); return; }
+    const row: ExerciseRow = { id: 'x' + Date.now().toString(36), he: he || en, en: en || he, video_url: null, step: 2.5 };
+    const err = await saveExercise(row);
+    if (err) { showToast(`${s.saveFailed}: ${err}`); return; }
+    setExs(list => [...list, row]);
+    setFreeHe(''); setFreeEn('');
+    addToPart(row.id);
+  };
 
   const save = async () => {
     if (busy) return;
@@ -152,14 +182,14 @@ function CycleEditor({ id, onBack }: { id: string; onBack: () => void }) {
     showToast(err ? `${s.saveFailed}: ${err}` : s.detailsSaved);
   };
 
-  const group = (p: CyclePart, v: Variant | null) => {
+  const group = (p: CyclePart, index: number, v: Variant | null) => {
     const ids = idsOf(p, v);
     const move = (i: number, d: number) => {
       const next = [...ids];
       const j = i + d;
       if (j < 0 || j >= next.length) return;
       [next[i], next[j]] = [next[j], next[i]];
-      setIds(p.kind, v, next);
+      setIds(index, v, next);
     };
     return (
       <View key={String(v)} style={{ gap: 6 }}>
@@ -170,10 +200,10 @@ function CycleEditor({ id, onBack }: { id: string; onBack: () => void }) {
             <T s={14} lh={1.3} style={{ flex: 1 }}>{name(exId)}</T>
             <Btn onPress={() => move(i, -1)} style={st.small}><T w={700} s={14}>↑</T></Btn>
             <Btn onPress={() => move(i, 1)} style={st.small}><T w={700} s={14}>↓</T></Btn>
-            <Btn onPress={() => setIds(p.kind, v, ids.filter((_, k) => k !== i))} style={st.small}><T w={700} s={14} c={t.accText}>✕</T></Btn>
+            <Btn onPress={() => setIds(index, v, ids.filter((_, k) => k !== i))} style={st.small}><T w={700} s={14} c={t.accText}>✕</T></Btn>
           </View>
         ))}
-        <Btn onPress={() => { setQ(''); setPick({ kind: p.kind, variant: v }); }} style={st.small}>
+        <Btn onPress={() => { setQ(''); setPick({ index, variant: v }); }} style={st.small}>
           <T w={700} s={14}>+ {s.addExercise}</T>
         </Btn>
       </View>
@@ -201,43 +231,80 @@ function CycleEditor({ id, onBack }: { id: string; onBack: () => void }) {
           <Field label={s.fNameEn} value={workout.focus_en} onChange={v => patchWorkout(w => ({ ...w, focus_en: v }))} />
         </View>
         {workout.parts.map((p, i) => (
-          <View key={p.kind} style={st.card}>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
+          <View key={i} style={st.card}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <T k="num" w={800} s={20}>{'0' + (i + 1)}</T>
               <T w={700} s={15} style={{ flex: 1 }}>{PART_NAME[p.kind][lang]}</T>
+              <Btn onPress={() => moveItem(i, -1)} style={st.small}><T w={700} s={14}>↑</T></Btn>
+              <Btn onPress={() => moveItem(i, 1)} style={st.small}><T w={700} s={14}>↓</T></Btn>
+              <Btn
+                onPress={() => {
+                  if (confirmPart === i) { setConfirmPart(null); patchWorkout(w => ({ ...w, parts: w.parts.filter((_, k) => k !== i) })); }
+                  else setConfirmPart(i);
+                }}
+                style={st.small}>
+                <T w={700} s={13} c={t.accText}>{confirmPart === i ? s.confirmRemovePart : '✕'}</T>
+              </Btn>
+            </View>
+            <T s={12}>{s.partNameNote}</T>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Field label={s.fNameHe} value={p.title_he} onChange={v => patchPart(i, x => ({ ...x, title_he: v }))} />
+              <Field label={s.fNameEn} value={p.title_en} onChange={v => patchPart(i, x => ({ ...x, title_en: v }))} />
             </View>
             {TRACKED.includes(p.kind) && (
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <Field num label={s.repsFrom} value={p.reps_min ?? 0} onChange={v => patchPart(p.kind, x => ({ ...x, reps_min: Math.round(num(v)) }))} />
-                <Field num label={s.repsTo} value={p.reps_max ?? 0} onChange={v => patchPart(p.kind, x => ({ ...x, reps_max: Math.round(num(v)) }))} />
+                <Field num label={s.repsFrom} value={p.reps_min ?? 0} onChange={v => patchPart(i, x => ({ ...x, reps_min: Math.round(num(v)) }))} />
+                <Field num label={s.repsTo} value={p.reps_max ?? 0} onChange={v => patchPart(i, x => ({ ...x, reps_max: Math.round(num(v)) }))} />
               </View>
             )}
-            {p.kind === 'last' ? (['upper', 'lower'] as Variant[]).map(v => group(p, v)) : group(p, null)}
+            {p.kind === 'last' ? (['upper', 'lower'] as Variant[]).map(v => group(p, i, v)) : group(p, i, null)}
           </View>
         ))}
+        <Btn onPress={() => setAddingPart(true)} style={st.wide}><T w={700} s={16}>+ {s.addPart}</T></Btn>
         <Btn onPress={save} style={[st.wide, { backgroundColor: t.acc, borderColor: t.acc, opacity: busy ? 0.6 : 1 }]}>
           <T w={700} s={16} c={t.onAcc}>{s.saveCycle}</T>
         </Btn>
       </ScrollView>
+      {addingPart && (
+        <Modal transparent animationType="slide" onRequestClose={() => setAddingPart(false)}>
+          <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
+            <View style={{ backgroundColor: t.bg, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingTop: 18, paddingHorizontal: 20, paddingBottom: 24, gap: 4 }}>
+              <T k="head" s={22} lh={1.15}>{s.partKindTitle}</T>
+              {PART_KINDS.map(kind => (
+                <Btn
+                  key={kind}
+                  onPress={() => { patchWorkout(w => ({ ...w, parts: [...w.parts, newPart(kind, w.parts.length)] })); setAddingPart(false); }}
+                  style={{ paddingVertical: 14, borderTopWidth: 1, borderTopColor: t.ink }}>
+                  <T w={500} s={15}>{PART_NAME[kind][lang]}</T>
+                </Btn>
+              ))}
+              <Btn onPress={() => setAddingPart(false)} style={[st.wide, { marginTop: 8 }]}><T w={700} s={16}>{s.close}</T></Btn>
+            </View>
+          </View>
+        </Modal>
+      )}
       {pick && (
         <Modal transparent animationType="slide" onRequestClose={() => setPick(null)}>
           <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
-            <View style={{ backgroundColor: t.bg, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '80%', paddingTop: 18, paddingHorizontal: 20, paddingBottom: 24, gap: 12 }}>
+            <View style={{ backgroundColor: t.bg, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '85%', paddingTop: 18, paddingHorizontal: 20, paddingBottom: 24, gap: 10 }}>
               <T k="head" s={22} lh={1.15}>{s.addExercise}</T>
+              <T w={700} s={14}>{s.freeExercise}</T>
+              <T s={12} lh={1.3}>{s.freeHint}</T>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Field label={s.fNameHe} value={freeHe} onChange={setFreeHe} />
+                <Field label={s.fNameEn} value={freeEn} onChange={setFreeEn} />
+              </View>
+              <Btn onPress={addFree} style={[st.wide, { backgroundColor: t.acc, borderColor: t.acc }]}>
+                <T w={700} s={16} c={t.onAcc}>+ {s.add}</T>
+              </Btn>
+              <T w={700} s={14} style={{ marginTop: 6 }}>{s.fromList}</T>
               <TextInput
                 value={q} onChangeText={setQ} placeholder={s.searchEx} placeholderTextColor={t.ink + '88'}
                 style={{ height: 44, borderWidth: 1.5, borderColor: t.ink, borderRadius: 10, paddingHorizontal: 10, color: t.ink, fontSize: 15, fontFamily: 'Heebo_400Regular' }}
               />
               <ScrollView style={{ flexGrow: 0 }} keyboardShouldPersistTaps="handled">
                 {shown.map(e => (
-                  <Btn
-                    key={e.id}
-                    onPress={() => {
-                      const part = workout.parts.find(p => p.kind === pick.kind) as CyclePart;
-                      setIds(pick.kind, pick.variant, [...idsOf(part, pick.variant), e.id]);
-                      setPick(null);
-                    }}
-                    style={{ paddingVertical: 14, borderTopWidth: 1, borderTopColor: t.ink }}>
+                  <Btn key={e.id} onPress={() => addToPart(e.id)} style={{ paddingVertical: 14, borderTopWidth: 1, borderTopColor: t.ink }}>
                     <T w={500} s={15} lh={1.3}>{e[lang]}</T>
                   </Btn>
                 ))}

@@ -1,4 +1,4 @@
-import { CycleWorkout, ExerciseRow, PartKind, Variant, WorkoutKey } from './data';
+import { CyclePart, CycleWorkout, ExerciseRow, PartKind, Variant, WorkoutKey } from './data';
 import { supabase } from './supabase';
 
 export const WORKOUT_KEYS: WorkoutKey[] = ['A', 'B', 'F'];
@@ -7,6 +7,12 @@ export const PART_KINDS: PartKind[] = ['warmup', 'activation', 'project', 'super
 /** Warm-up and abs list exercises with no weight tracking and no rep range. */
 export const TRACKED: PartKind[] = ['activation', 'project', 'superset', 'last'];
 
+/** An empty part. Tracked kinds start with a rep range. */
+export const newPart = (kind: PartKind, position: number): CyclePart => ({
+  kind, position, title_he: '', title_en: '',
+  reps_min: TRACKED.includes(kind) ? 8 : null, reps_max: TRACKED.includes(kind) ? 12 : null, items: [],
+});
+
 export type CycleDetail = { id: string; name_he: string; name_en: string; active: boolean; workouts: CycleWorkout[] };
 export type CycleListItem = { id: string; name_he: string; name_en: string; active: boolean };
 
@@ -14,26 +20,27 @@ type Raw = {
   id: string; name_he: string; name_en: string; active: boolean;
   cycle_workouts: { workout: WorkoutKey; focus_he: string; focus_en: string }[];
   cycle_parts: {
-    workout: WorkoutKey; position: number; kind: PartKind; reps_min: number | null; reps_max: number | null;
+    workout: WorkoutKey; position: number; kind: PartKind; reps_min: number | null; reps_max: number | null; title_he: string; title_en: string;
     cycle_part_items: { variant: Variant | null; position: number; exercise_id: string }[];
   }[];
 };
 
-const SELECT = 'id, name_he, name_en, active, cycle_workouts(workout, focus_he, focus_en), cycle_parts(workout, position, kind, reps_min, reps_max, cycle_part_items(variant, position, exercise_id))';
+const SELECT = 'id, name_he, name_en, active, cycle_workouts(workout, focus_he, focus_en), cycle_parts(workout, position, kind, reps_min, reps_max, title_he, title_en, cycle_part_items(variant, position, exercise_id))';
 
 /** Fills every workout and every part, so the editor always shows the full structure. */
 function shape(r: Raw): CycleDetail {
   const workouts = WORKOUT_KEYS.map(key => {
     const w = r.cycle_workouts.find(x => x.workout === key);
-    const parts = PART_KINDS.map((kind, position) => {
-      const p = r.cycle_parts.find(x => x.workout === key && x.kind === kind);
-      return {
-        kind, position,
-        reps_min: p?.reps_min ?? (TRACKED.includes(kind) ? 8 : null),
-        reps_max: p?.reps_max ?? (TRACKED.includes(kind) ? 12 : null),
-        items: (p?.cycle_part_items ?? []).map(i => ({ variant: i.variant, position: i.position, exercise_id: i.exercise_id })),
-      };
-    });
+    const rows = r.cycle_parts.filter(x => x.workout === key).sort((a, b) => a.position - b.position);
+    // A workout with no parts starts with the standard structure.
+    const parts: CyclePart[] = rows.length
+      ? rows.map((p, position) => ({
+        kind: p.kind, position, title_he: p.title_he, title_en: p.title_en,
+        reps_min: p.reps_min ?? (TRACKED.includes(p.kind) ? 8 : null),
+        reps_max: p.reps_max ?? (TRACKED.includes(p.kind) ? 12 : null),
+        items: p.cycle_part_items.map(i => ({ variant: i.variant, position: i.position, exercise_id: i.exercise_id })),
+      }))
+      : PART_KINDS.map((kind, position) => newPart(kind, position));
     return { key, focus_he: w?.focus_he ?? '', focus_en: w?.focus_en ?? '', parts };
   });
   return { id: r.id, name_he: r.name_he, name_en: r.name_en, active: r.active, workouts };
@@ -67,7 +74,7 @@ export async function saveCycle(c: CycleDetail): Promise<string | null> {
     workouts: c.workouts.map(w => ({
       key: w.key, focus_he: w.focus_he, focus_en: w.focus_en,
       parts: w.parts.map(p => ({
-        kind: p.kind,
+        kind: p.kind, title_he: p.title_he, title_en: p.title_en,
         reps_min: TRACKED.includes(p.kind) ? p.reps_min : null,
         reps_max: TRACKED.includes(p.kind) ? p.reps_max : null,
         items: p.items.map(i => ({ variant: i.variant ?? '', exercise_id: i.exercise_id })),

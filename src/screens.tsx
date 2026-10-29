@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 import {
   BOARDS, BoardKey, CARD_COLORS, CardColor, DATES, DEF, ExId, INTENSITIES, Intensity, Lang, PART_NAME, Part, SERIES, SeriesKey,
-  ALL_IDS, EquivItem, Rank, RuleKey, TRAINEES, THEMES, Trainee, ThemeKey, VARIANT_NAME, Variant, WEEKS, WORKOUTS, WorkoutKey, fmt, partIds, rankFor, readyToRaise, videoUrl,
+  ALL_IDS, partTitle, EquivItem, Rank, RuleKey, TRAINEES, THEMES, Trainee, ThemeKey, VARIANT_NAME, Variant, WEEKS, WORKOUTS, WorkoutKey, fmt, partIds, rankFor, readyToRaise, videoUrl,
 } from './data';
 import { useApp } from './store';
 import { Gender, useAuth } from './auth';
@@ -25,7 +25,7 @@ export function Home() {
   const names = (ids: ExId[]) => ids.map(id => DEF[id][lang]);
   const parts = WORKOUTS[wk].parts.map((p, i, all) => ({
     num: '0' + (i + 1),
-    label: PART_NAME[p.kind][lang],
+    label: partTitle(p, lang),
     lines: p.variants
       ? (['upper', 'lower'] as Variant[]).map(v => `${VARIANT_NAME[v][lang]}: ${names(p.variants![v]).join(' · ')}`)
       : p.names ? [p.names.map(n => n[lang]).join(' · ')] : names(partIds(p, 'upper')),
@@ -241,7 +241,7 @@ export function Log() {
           <View key={num} style={{ gap: 10, marginTop: 24 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
               <T k="num" w={800} s={20}>{num}</T>
-              <T w={700} s={15}>{PART_NAME[p.kind][lang]}</T>
+              <T w={700} s={15}>{partTitle(p, lang)}</T>
             </View>
             {p.variants && (
               <Segmented
