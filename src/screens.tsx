@@ -391,7 +391,7 @@ export function Share() {
       try {
         // Stop after 20 seconds, so the button never says "preparing" for ever.
         const blob = await Promise.race([
-          cardToPng(exportRef.current as unknown as HTMLElement),
+          cardToPng(exportRef.current as unknown as HTMLElement, clear && bgPhoto ? { uri: bgPhoto, dim: bgDim } : undefined),
           new Promise<never>((_, fail) => setTimeout(() => fail(new Error('The card took too long to draw')), 20000)),
         ]);
         if (live) setPng(blob);

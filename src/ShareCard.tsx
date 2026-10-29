@@ -144,8 +144,13 @@ export function ShareCard({ variant, ink, lang, k }: {
   return (
     <View style={root}>
       {/* The photo the trainee chose fills the card. Instagram shows a transparent picture as black. */}
-      {bgPhoto && <Image source={{ uri: bgPhoto }} contentFit="cover" style={fill} />}
-      {bgPhoto && bgDim && <View style={[fill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />}
+      {/* The PNG export leaves this layer out and draws the photo itself (see cardToPng). Some phone browsers drop the photo from the card drawing. */}
+      {bgPhoto && (
+        <View {...({ dataSet: { exportBg: '1' } } as object)} pointerEvents="none" style={fill}>
+          <Image source={{ uri: bgPhoto }} contentFit="cover" style={{ width: '100%', height: '100%' }} />
+          {bgDim && <View style={[fill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />}
+        </View>
+      )}
       <View style={{ flex: 1, paddingTop: z(200), paddingBottom: z(240), paddingHorizontal: z(88), alignItems: 'flex-start', gap: z(20) }}>
         <View style={{ gap: z(36), alignSelf: 'stretch' }}>
           <Image source={c.white ? LOGO_WHITE : LOGO_BLACK} contentFit="contain" style={{ width: z(380), height: z(380) / LOGO_RATIO }} />

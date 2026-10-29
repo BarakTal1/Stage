@@ -2,8 +2,24 @@
 
 export type ShareResult = 'shared' | 'downloaded' | 'canceled';
 
-/** Draws the card at its full size (1080 x 1920). A transparent card gives a transparent PNG. */
-export async function cardToPng(node: HTMLElement): Promise<Blob> {
+/** Loads a picture from a link and waits for the load event. */
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((done, fail) => {
+    const img = new Image();
+    img.onload = () => done(img);
+    img.onerror = () => fail(new Error('The picture could not be read'));
+    img.src = src;
+  });
+}
+
+export type CardBackground = { uri: string; dim: boolean };
+
+/**
+ * Draws the card at its full size (1080 x 1920). A transparent card gives a transparent PNG.
+ * With `bg`, the photo is drawn on a canvas first and the card goes on top.
+ * The card drawing library leaves out the layer marked data-export-bg. Some phone browsers do not draw a photo inside it, so the PNG came out black in Instagram.
+ */
+export async function cardToPng(node: HTMLElement, bg?: CardBackground): Promise<Blob> {
   // Wait for the logo and the photo. A card drawn before they load shows empty spaces.
   // Images far off screen can wait for ever when the browser loads them lazily, so ask for them at once and stop waiting after 2 seconds.
   const images = Array.from(node.querySelectorAll('img'));
@@ -13,9 +29,32 @@ export async function cardToPng(node: HTMLElement): Promise<Blob> {
     return new Promise(done => { img.onload = img.onerror = () => done(null); setTimeout(() => done(null), 2000); });
   }));
   const { toBlob } = await import('html-to-image');
-  const blob = await toBlob(node, { pixelRatio: 1, cacheBust: true, width: 1080, height: 1920 });
-  if (!blob) throw new Error('The card could not be drawn');
-  return blob;
+  const options = {
+    pixelRatio: 1, cacheBust: true, width: 1080, height: 1920,
+    filter: (n: Node) => !(n as HTMLElement).dataset?.exportBg,
+  };
+  // Safari draws the images of the first picture empty. The second picture is complete.
+  await toBlob(node, options);
+  const layer = await toBlob(node, options);
+  if (!layer) throw new Error('The card could not be drawn');
+  if (!bg) return layer;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1080;
+  canvas.height = 1920;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('The canvas is not available');
+  const photo = await loadImage(bg.uri);
+  // Fill the card and cut the edges, like "cover" does.
+  const scale = Math.max(1080 / photo.naturalWidth, 1920 / photo.naturalHeight);
+  const w = photo.naturalWidth * scale, h = photo.naturalHeight * scale;
+  ctx.drawImage(photo, (1080 - w) / 2, (1920 - h) / 2, w, h);
+  if (bg.dim) { ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(0, 0, 1080, 1920); }
+  const url = URL.createObjectURL(layer);
+  try { ctx.drawImage(await loadImage(url), 0, 0, 1080, 1920); } finally { URL.revokeObjectURL(url); }
+  const out = await new Promise<Blob | null>(done => canvas.toBlob(done, 'image/png'));
+  if (!out) throw new Error('The card could not be drawn');
+  return out;
 }
 
 export function downloadPng(blob: Blob, name: string) {
