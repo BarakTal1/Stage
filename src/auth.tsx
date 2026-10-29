@@ -3,7 +3,12 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
 export type AppRole = 'trainee' | 'coach' | 'admin';
-export type Profile = { id: string; role: AppRole; name: string };
+export type Gender = 'male' | 'female';
+export type Profile = {
+  id: string; role: AppRole; name: string; gender: Gender | null;
+  birth_year: number | null; height_cm: number | null; weight_kg: number | null;
+};
+export type ProfilePatch = Partial<Omit<Profile, 'id' | 'role'>>;
 
 type AuthCtx = {
   ready: boolean;
@@ -13,6 +18,8 @@ type AuthCtx = {
   /** Returns an error text, or null. `confirm` is true when the user must confirm the email first. */
   signUp: (email: string, password: string) => Promise<{ error: string | null; confirm: boolean }>;
   signOut: () => Promise<void>;
+  /** Saves the user's own details. Returns an error text, or null. */
+  updateProfile: (patch: ProfilePatch) => Promise<string | null>;
 };
 
 const Ctx = createContext<AuthCtx>(null as unknown as AuthCtx);
@@ -34,7 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!userId) { setProfile(null); return; }
     let live = true;
-    supabase.from('profiles').select('id, role, name').eq('id', userId).maybeSingle()
+    supabase.from('profiles').select('id, role, name, gender, birth_year, height_cm, weight_kg').eq('id', userId).maybeSingle()
       .then(({ data }) => { if (live) setProfile((data as Profile | null) ?? null); });
     return () => { live = false; };
   }, [userId]);
@@ -50,6 +57,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error: error ? error.message : null, confirm: !error && !data.session };
     },
     signOut: async () => { await supabase.auth.signOut(); },
+    updateProfile: async patch => {
+      if (!userId) return 'Not signed in';
+      const { error } = await supabase.from('profiles').update(patch).eq('id', userId);
+      if (error) return error.message;
+      setProfile(cur => (cur ? { ...cur, ...patch } : cur));
+      return null;
+    },
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

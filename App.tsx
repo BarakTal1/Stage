@@ -6,16 +6,20 @@ import { Heebo_400Regular, Heebo_500Medium, Heebo_700Bold } from '@expo-google-f
 import { AppProvider, useApp } from './src/store';
 import { AuthProvider, useAuth } from './src/auth';
 import { Login } from './src/Login';
+import { Details } from './src/Details';
 import { Admin, Board, Coach, Home, Log, Progress, RankUp, Settings, Share, Summary } from './src/screens';
 import { T } from './src/ui';
 
-const SCREENS = { home: Home, log: Log, summary: Summary, share: Share, progress: Progress, board: Board, settings: Settings, coach: Coach, admin: Admin };
+const SCREENS = { home: Home, log: Log, summary: Summary, share: Share, progress: Progress, board: Board, settings: Settings, coach: Coach, admin: Admin, profile: Details };
 
 function Router() {
   const { screen, toast, he, frame, isAdmin } = useApp();
-  const { ready, session } = useAuth();
+  const { ready, session, profile } = useAuth();
   if (!ready) return null;
   if (!session) return <Login />;
+  if (!profile) return null;
+  // The first sign-in asks for name and gender. The ranks depend on the gender.
+  if (!profile.gender) return <Details first />;
   // Only the admin opens the admin screen. The database enforces this too.
   const Screen = screen === 'admin' && !isAdmin ? Home : SCREENS[screen];
   return (

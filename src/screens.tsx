@@ -7,7 +7,7 @@ import {
   ALL_IDS, EquivItem, Rank, RuleKey, TRAINEES, THEMES, Trainee, ThemeKey, VARIANT_NAME, Variant, WEEKS, WORKOUTS, WorkoutKey, fmt, partIds, rankFor, readyToRaise, videoUrl,
 } from './data';
 import { useApp } from './store';
-import { useAuth } from './auth';
+import { Gender, useAuth } from './auth';
 import { ShareCard } from './ShareCard';
 import {
   Btn, Chev, CloseX, ICON_BLACK, ICON_RATIO, ICON_WHITE, Image, Page, PreviewBg, Segmented, T, TabBar,
@@ -775,10 +775,13 @@ function Field({ label, value, onChange, num, flex = 1 }: {
 }
 
 export function Admin() {
-  const { s, t, go, equivItems, setEquivItems, ranks, setRanks, rules, setRules } = useApp();
+  const { s, t, go, equivItems, setEquivItems, rankLists, setRankList, rules, setRules } = useApp();
   const [tab, setTab] = React.useState<'equiv' | 'ranks' | 'rules'>('equiv');
+  const [rg, setRg] = React.useState<Gender>('male');
+  const ranks = rankLists[rg];
   const num = (v: string) => { const n = parseFloat(v.replace(',', '.')); return isNaN(n) ? 0 : n; };
   const setItem = (id: string, fn: (it: EquivItem) => EquivItem) => setEquivItems(equivItems.map(it => (it.id === id ? fn(it) : it)));
+  const setRanks = (v: Rank[]) => setRankList(rg, v);
   const setRank = (id: string, fn: (r: Rank) => Rank) => setRanks(ranks.map(r => (r.id === id ? fn(r) : r)));
   const Del = ({ onPress }: { onPress: () => void }) => (
     <Btn onPress={onPress} style={{ alignSelf: 'flex-end', height: 32, paddingHorizontal: 10, justifyContent: 'center' }}>
@@ -829,6 +832,10 @@ export function Admin() {
         )}
         {tab === 'ranks' && (
           <>
+            <Segmented
+              value={rg} onChange={setRg} ink={t.ink} bg={t.bg}
+              options={[{ key: 'male', label: s.ranksMale }, { key: 'female', label: s.ranksFemale }]}
+            />
             {ranks.map(r => (
               <View key={r.id} style={{ borderWidth: 1.5, borderColor: t.ink, borderRadius: 14, padding: 12, gap: 8 }}>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -876,6 +883,9 @@ export function Settings() {
             <T w={700} s={16}>{s.admin}</T>
           </Btn>
         )}
+        <Btn onPress={() => go('profile')} style={{ marginTop: 10, height: 48, borderRadius: 14, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
+          <T w={700} s={16}>{s.myDetails}</T>
+        </Btn>
         <Btn onPress={signOut} style={{ marginTop: 10, height: 48, borderRadius: 14, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
           <T w={700} s={16}>{s.signOut}</T>
         </Btn>
