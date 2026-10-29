@@ -1,10 +1,11 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import {
+  EQUIV_DEFAULT, EquivItem, INITIAL_POINTS, MOCK_STREAK_WEEKS, RANKS_DEFAULT, RULES_DEFAULT, Rank, RuleKey, pickEquiv, rankFor,
   CardColor, DEFAULT_VARIANT, DEF, ExId, Intensity, Lang, S, SeriesKey, SetRow, Strings, THEMES, Theme, ThemeKey,
   Period, Role, Variant, WORKOUTS, WorkoutKey, fmt, initialSets, repRange, workoutIds,
 } from './data';
 
-export type Screen = 'home' | 'log' | 'summary' | 'share' | 'progress' | 'board' | 'settings' | 'coach';
+export type Screen = 'home' | 'log' | 'summary' | 'share' | 'progress' | 'board' | 'settings' | 'coach' | 'admin';
 export const TAB_SCREENS: Screen[] = ['home', 'progress', 'board', 'settings'];
 
 type Ctx = {
@@ -28,6 +29,14 @@ type Ctx = {
   hidden: boolean; toggleHidden: () => void;
   period: Period; setPeriod: (p: Period) => void;
   role: Role; setRole: (r: Role) => void;
+  // Editable lists: the studio changes them in the admin screen.
+  equivItems: EquivItem[]; setEquivItems: (v: EquivItem[]) => void;
+  ranks: Rank[]; setRanks: (v: Rank[]) => void;
+  rules: Record<RuleKey, number>; setRules: (v: Record<RuleKey, number>) => void;
+  roll: number; rollEquiv: () => void; equivFor: (total: number) => EquivItem | null;
+  points: number; earned: { workout: number; pr: number; streak: number; share: number; total: number } | null;
+  saveWorkout: () => void; awardShare: () => void;
+  rankUp: Rank | null; dismissRankUp: () => void;
   photo: string | null; setPhoto: (uri: string | null) => void;
   shareMode: 'full' | 'clear'; setShareMode: (m: 'full' | 'clear') => void;
   cardColor: CardColor; setCardColor: (c: CardColor) => void;
@@ -53,6 +62,15 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
   const [hidden, setHidden] = useState(true);
   const [period, setPeriod] = useState<Period>('workout');
   const [role, setRole] = useState<Role>('trainee');
+  const [equivItems, setEquivItems] = useState(EQUIV_DEFAULT);
+  const [ranks, setRanks] = useState(RANKS_DEFAULT);
+  const [rules, setRules] = useState(RULES_DEFAULT);
+  const [roll, setRoll] = useState(Math.random);
+  const [points, setPoints] = useState(INITIAL_POINTS);
+  const [earned, setEarned] = useState<Ctx['earned']>(null);
+  const [rankUp, setRankUp] = useState<Rank | null>(null);
+  const live = useRef({ points: INITIAL_POINTS, ranks: RANKS_DEFAULT, saved: false, shared: false });
+  live.current.ranks = ranks;
   const [photo, setPhoto] = useState<string | null>(null);
   const [shareMode, setShareMode] = useState<'full' | 'clear'>('full');
   const [cardColorRaw, setCardColor] = useState<CardColor | null>(null);
@@ -104,6 +122,15 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
     patchSet(id, set, row => (w < 0 ? null : { ...row, w }));
   }, [patchSet]);
 
+  // Adds points and shows the rank-up notice when the trainee reaches a higher rank.
+  const award = useCallback((n: number) => {
+    const before = live.current.points, after = before + n;
+    live.current.points = after;
+    setPoints(after);
+    const a = rankFor(before, live.current.ranks), b = rankFor(after, live.current.ranks);
+    if (b.idx > a.idx) setRankUp(b.rank);
+  }, []);
+
   const setIntensity = useCallback((part: number, v: Intensity) => {
     setIntensityRaw(cur => ({ ...cur, [`${wk}:${part}`]: v }));
   }, [wk]);
@@ -131,17 +158,35 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
       setVariant: (v: Variant) => setVariants(c => ({ ...c, [wk]: v })),
       setLang: (l: Lang) => { setLangRaw(l); setCardLang(null); },
       setTheme: (k: ThemeKey) => { setThemeRaw(k); setCardColor(null); },
-      go: setScreen,
+      go: (sc: Screen) => { if (sc === 'home') live.current.saved = false; setScreen(sc); },
       chartEx, setChartEx,
       hidden, toggleHidden: () => setHidden(h => !h),
       period, setPeriod, role, setRole, photo, setPhoto,
+      equivItems, setEquivItems, ranks, setRanks, rules, setRules,
+      roll, rollEquiv: () => setRoll(Math.random()), equivFor: (tot: number) => pickEquiv(equivItems, tot, roll),
+      points, earned, rankUp, dismissRankUp: () => setRankUp(null),
+      // Points come once for each saved workout. A new workout starts when the trainee goes home.
+      saveWorkout: () => {
+        if (live.current.saved) return;
+        live.current.saved = true; live.current.shared = false;
+        const e = { workout: rules.workout, pr: prs.length * rules.pr, streak: MOCK_STREAK_WEEKS * rules.streak, share: 0, total: 0 };
+        e.total = e.workout + e.pr + e.streak;
+        setEarned(e);
+        award(e.total);
+      },
+      awardShare: () => {
+        if (!live.current.saved || live.current.shared) return;
+        live.current.shared = true;
+        setEarned(e => (e ? { ...e, share: rules.share, total: e.total + rules.share } : e));
+        award(rules.share);
+      },
       shareMode, setShareMode,
       cardColor: cardColorRaw ?? t.card, setCardColor,
       cardLang: cardLangRaw ?? lang, setCardLang,
       clearInk, setClearInk,
       toast, showToast,
     };
-  }, [lang, he, s, t, themeKey, screen, frame, ex, bump, setWeight, intensity, setIntensity, resolve, swapEx, rangeFor, wk, variants, chartEx, hidden, period, role, photo, shareMode,
+  }, [lang, he, s, t, themeKey, screen, frame, ex, bump, setWeight, intensity, setIntensity, resolve, swapEx, rangeFor, wk, variants, chartEx, hidden, period, role, photo, equivItems, ranks, rules, roll, points, earned, rankUp, award, shareMode,
       cardColorRaw, cardLangRaw, clearInk, toast, showToast]);
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

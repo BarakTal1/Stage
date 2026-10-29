@@ -4,10 +4,10 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { Heebo_400Regular, Heebo_500Medium, Heebo_700Bold } from '@expo-google-fonts/heebo';
 import { AppProvider, useApp } from './src/store';
-import { Board, Coach, Home, Log, Progress, Settings, Share, Summary } from './src/screens';
+import { Admin, Board, Coach, Home, Log, Progress, RankUp, Settings, Share, Summary } from './src/screens';
 import { T } from './src/ui';
 
-const SCREENS = { home: Home, log: Log, summary: Summary, share: Share, progress: Progress, board: Board, settings: Settings, coach: Coach };
+const SCREENS = { home: Home, log: Log, summary: Summary, share: Share, progress: Progress, board: Board, settings: Settings, coach: Coach, admin: Admin };
 
 function Router() {
   const { screen, toast, he, frame } = useApp();
@@ -15,6 +15,7 @@ function Router() {
   return (
     <View style={{ flex: 1 }}>
       <Screen />
+      <RankUp />
       {toast && (
         <View pointerEvents="none" style={{ position: 'absolute', left: 20, right: 20, bottom: frame ? 150 : 130, alignItems: 'center', direction: he ? 'rtl' : 'ltr' } as ViewStyle}>
           <View style={{ backgroundColor: '#2B1111', borderRadius: 14, paddingVertical: 12, paddingHorizontal: 18 }}>

@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 import {
   BOARDS, BoardKey, CARD_COLORS, CardColor, DATES, DEF, ExId, INTENSITIES, Intensity, Lang, PART_NAME, Part, SERIES, SeriesKey,
-  ALL_IDS, TRAINEES, THEMES, Trainee, ThemeKey, VARIANT_NAME, Variant, WEEKS, WORKOUTS, WorkoutKey, fmt, partIds, readyToRaise, videoUrl,
+  ALL_IDS, EquivItem, Rank, RuleKey, TRAINEES, THEMES, Trainee, ThemeKey, VARIANT_NAME, Variant, WEEKS, WORKOUTS, WorkoutKey, fmt, partIds, rankFor, readyToRaise, videoUrl,
 } from './data';
 import { useApp } from './store';
 import { ShareCard } from './ShareCard';
@@ -16,7 +16,8 @@ const scrollStyle = (extra: object = {}) => ({ flex: 1 as const, ...extra });
 
 // ---------------------------------------------------------------- Home
 export function Home() {
-  const { s, t, go, lang, wk, setWk, focus } = useApp();
+  const { s, t, go, lang, wk, setWk, focus, points, ranks } = useApp();
+  const myRank = rankFor(points, ranks).rank;
   const segs = Array.from({ length: 12 }, (_, i) => ({ l: i === 7 ? wk : i % 2 ? 'B' : 'A', done: i < 7, today: i === 7 }));
   const names = (ids: ExId[]) => ids.map(id => DEF[id][lang]);
   const parts = WORKOUTS[wk].parts.map((p, i, all) => ({
@@ -34,6 +35,7 @@ export function Home() {
           <View style={{ gap: 4, flex: 1 }}>
             <T s={14} lh={1.3}>{s.dateLong}</T>
             <T k="head" s={30} lh={1.1}>{s.hello}</T>
+            <T s={13}>{s.rankLabel}: <T w={700} s={13} c={t.accText}>{myRank[lang]}</T> · <T k="num" w={800} s={13}>{points}</T> {s.pts}</T>
           </View>
           <Image source={t.icon === 'black' ? ICON_BLACK : ICON_WHITE} contentFit="contain" style={{ width: 58, height: 58 / ICON_RATIO, margin: 8 }} />
         </View>
@@ -214,7 +216,7 @@ function ExCard({ orig }: { orig: ExId }) {
 }
 
 export function Log() {
-  const { s, t, go, total, frame, wk, focus, lang, variant, setVariant, intensity, setIntensity } = useApp();
+  const { s, t, go, total, frame, wk, focus, lang, variant, setVariant, intensity, setIntensity, saveWorkout } = useApp();
   // Warm-up and abs have no tracking, so only the other parts get a weight section.
   const parts = WORKOUTS[wk].parts
     .map((p: Part, i) => ({ p, num: '0' + (i + 1), idx: i, ids: partIds(p, variant) }))
@@ -259,7 +261,7 @@ export function Log() {
           <T s={13}>{s.totalShort}</T>
           <T><T k="num" w={800} s={24}>{fmt(total)}</T> <T s={14}>{s.kg}</T></T>
         </View>
-        <Btn onPress={() => go('summary')} style={{ flex: 1, height: 56, borderRadius: 16, backgroundColor: t.acc, alignItems: 'center', justifyContent: 'center' }}>
+        <Btn onPress={() => { saveWorkout(); go('summary'); }} style={{ flex: 1, height: 56, borderRadius: 16, backgroundColor: t.acc, alignItems: 'center', justifyContent: 'center' }}>
           <T w={700} s={18} c={t.onAcc}>{s.save}</T>
         </Btn>
       </View>
@@ -269,7 +271,8 @@ export function Log() {
 
 // ---------------------------------------------------------------- Summary
 export function Summary() {
-  const { s, t, go, total, pct, prs, frame, setShareMode, wk, focus, prev, prevDate } = useApp();
+  const { s, t, go, lang, total, pct, prs, frame, setShareMode, wk, focus, prev, prevDate, earned, points, ranks } = useApp();
+  const rk = rankFor(points, ranks);
   const mx = Math.max(total, prev);
   const todayW = `${(total / mx) * 100}%` as const;
   const prevW = `${(prev / mx) * 100}%` as const;
@@ -306,6 +309,34 @@ export function Summary() {
             <T k="num" w={500} s={14} c={t.sumOnBlock} style={{ width: 50, textAlign: 'right' }}>{fmt(prev)}</T>
           </View>
         </View>
+        {earned && (
+          <View style={{ borderWidth: 1.5, borderColor: t.sumInk, borderRadius: 18, padding: 16, marginTop: 20, gap: 8 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <T w={700} s={16} c={t.sumInk}>{s.earnedTitle}</T>
+              <T k="num" w={800} s={30} c={t.sumInk} ltr>{'+' + earned.total}</T>
+            </View>
+            {([['ruleWorkout', earned.workout], ['rulePr', earned.pr], ['ruleStreak', earned.streak], ['ruleShare', earned.share]] as const)
+              .filter(([, v]) => v > 0).map(([k, v]) => (
+                <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <T s={14} c={t.sumInk}>{s[k]}</T>
+                  <T k="num" w={500} s={14} c={t.sumInk} ltr>{'+' + v}</T>
+                </View>
+              ))}
+            <View style={{ borderTopWidth: 1, borderTopColor: t.sumInk, paddingTop: 10, gap: 6 }}>
+              <T w={700} s={15} c={t.sumInk}>{s.rankLabel}: {rk.rank[lang]}</T>
+              {rk.next ? (
+                <>
+                  <View style={{ height: 10, borderRadius: 5, borderWidth: 1.5, borderColor: t.sumInk, overflow: 'hidden' }}>
+                    <View style={{ height: '100%', width: `${Math.min(100, ((points - rk.rank.min) / (rk.next.min - rk.rank.min)) * 100)}%`, backgroundColor: t.sumInk }} />
+                  </View>
+                  <T s={13} c={t.sumInk}>{s.toNext.replace('{n}', String(rk.next.min - points))} · {rk.next[lang]}</T>
+                </>
+              ) : (
+                <T s={13} c={t.sumInk}>{s.topRank}</T>
+              )}
+            </View>
+          </View>
+        )}
         {prs.length > 0 && (
           <View style={{ marginTop: 24 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -342,7 +373,7 @@ const PW = 270, PH = 480;
 export function Share() {
   const {
     s, t, he, go, shareMode, setShareMode, cardColor, setCardColor, cardLang, setCardLang,
-    clearInk, setClearInk, frame, showToast, period, setPeriod, photo, setPhoto,
+    clearInk, setClearInk, frame, showToast, period, setPeriod, photo, setPhoto, rollEquiv, awardShare,
   } = useApp();
   const clear = shareMode === 'clear';
   const pickPhoto = async () => {
@@ -401,6 +432,9 @@ export function Share() {
             />
           </View>
         )}
+        <Btn onPress={rollEquiv} style={{ width: PW, height: 38, borderRadius: 12, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
+          <T w={700} s={14}>🎲 {s.rollAgain}</T>
+        </Btn>
         {!clear && (
           <View style={{ flexDirection: 'row', alignItems: 'center', width: PW, gap: 10 }}>
             <Btn onPress={pickPhoto} style={{ flex: 1, height: 38, borderRadius: 12, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
@@ -415,7 +449,7 @@ export function Share() {
         )}
       </ScrollView>
       <View style={{ paddingHorizontal: 20, paddingBottom: frame ? 34 : 16, gap: 10 }}>
-        <Btn onPress={() => showToast(s.toastInsta)} style={{ height: 56, borderRadius: 16, backgroundColor: t.acc, alignItems: 'center', justifyContent: 'center' }}>
+        <Btn onPress={() => { awardShare(); showToast(s.toastInsta); }} style={{ height: 56, borderRadius: 16, backgroundColor: t.acc, alignItems: 'center', justifyContent: 'center' }}>
           <T w={700} s={18} c={t.onAcc}>{s.insta}</T>
         </Btn>
         <Btn onPress={() => showToast(s.toastSave)} style={{ height: 56, borderRadius: 16, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
@@ -701,9 +735,131 @@ export function Coach() {
   );
 }
 
+// ---------------------------------------------------------------- Rank-up notice
+export function RankUp() {
+  const { s, lang, rankUp, dismissRankUp, points } = useApp();
+  if (!rankUp) return null;
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#CB0709', alignItems: 'center', justifyContent: 'center', padding: 28, gap: 14 }}>
+      <T k="head" s={26} c="#FFFFFF" style={{ textAlign: 'center' }}>{s.rankUpTitle}</T>
+      <T s={15} c="#FFFFFF">{s.rankUpSub}</T>
+      <T k="head" s={46} lh={1.1} c="#FFFFFF" style={{ textAlign: 'center' }}>{rankUp[lang]}</T>
+      <T k="num" w={800} s={18} c="#FFFFFF">{points} {s.pts}</T>
+      <Btn onPress={dismissRankUp} style={{ marginTop: 18, height: 56, paddingHorizontal: 36, borderRadius: 16, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+        <T w={700} s={18} c="#2B1111">{s.rankUpCta}</T>
+      </Btn>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------- Admin (lists the studio edits)
+function Field({ label, value, onChange, num, flex = 1 }: {
+  label: string; value: string | number; onChange: (v: string) => void; num?: boolean; flex?: number;
+}) {
+  const { t } = useApp();
+  const [draft, setDraft] = React.useState<string | null>(null);
+  return (
+    <View style={{ flex, gap: 3 }}>
+      <T s={12}>{label}</T>
+      <TextInput
+        value={draft ?? String(value)}
+        keyboardType={num ? 'decimal-pad' : 'default'}
+        onFocus={() => setDraft(String(value))}
+        onBlur={() => setDraft(null)}
+        onChangeText={txt => { setDraft(txt); onChange(txt); }}
+        style={{ height: 42, borderWidth: 1.5, borderColor: t.ink, borderRadius: 10, paddingHorizontal: 10, color: t.ink, fontSize: 15, fontFamily: num ? 'Archivo-Medium' : 'Heebo_400Regular' }}
+      />
+    </View>
+  );
+}
+
+export function Admin() {
+  const { s, t, go, equivItems, setEquivItems, ranks, setRanks, rules, setRules } = useApp();
+  const [tab, setTab] = React.useState<'equiv' | 'ranks' | 'rules'>('equiv');
+  const num = (v: string) => { const n = parseFloat(v.replace(',', '.')); return isNaN(n) ? 0 : n; };
+  const setItem = (id: string, fn: (it: EquivItem) => EquivItem) => setEquivItems(equivItems.map(it => (it.id === id ? fn(it) : it)));
+  const setRank = (id: string, fn: (r: Rank) => Rank) => setRanks(ranks.map(r => (r.id === id ? fn(r) : r)));
+  const Del = ({ onPress }: { onPress: () => void }) => (
+    <Btn onPress={onPress} style={{ alignSelf: 'flex-end', height: 32, paddingHorizontal: 10, justifyContent: 'center' }}>
+      <T w={700} s={13} c={t.accText}>{s.remove}</T>
+    </Btn>
+  );
+  const AddBtn = ({ onPress }: { onPress: () => void }) => (
+    <Btn onPress={onPress} style={{ height: 48, borderRadius: 14, backgroundColor: t.acc, alignItems: 'center', justifyContent: 'center', marginTop: 6 }}>
+      <T w={700} s={16} c={t.onAcc}>+ {s.add}</T>
+    </Btn>
+  );
+  return (
+    <Page>
+      <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 }}>
+        <Btn onPress={() => go('settings')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 44, paddingHorizontal: 8 }}>
+          <Chev color={t.ink} />
+          <T w={500} s={16}>{s.back}</T>
+        </Btn>
+      </View>
+      <ScrollView style={scrollStyle()} contentContainerStyle={{ paddingTop: 4, paddingHorizontal: 20, paddingBottom: 24, gap: 10 }} keyboardShouldPersistTaps="handled">
+        <T k="head" s={32} lh={1.1}>{s.adminTitle}</T>
+        <T s={13} lh={1.4}>{s.adminNote}</T>
+        <Segmented
+          value={tab} onChange={setTab} ink={t.ink} bg={t.bg} h={40} size={14}
+          options={[{ key: 'equiv', label: s.adminEquiv }, { key: 'ranks', label: s.adminRanks }, { key: 'rules', label: s.adminRules }]}
+        />
+        {tab === 'equiv' && (
+          <>
+            <T s={13}>{s.equivHint}</T>
+            {equivItems.map(it => (
+              <View key={it.id} style={{ borderWidth: 1.5, borderColor: t.ink, borderRadius: 14, padding: 12, gap: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Field label={s.fHeOne} value={it.he[0]} onChange={v => setItem(it.id, x => ({ ...x, he: [v, x.he[1]] }))} />
+                  <Field label={s.fHeMany} value={it.he[1]} onChange={v => setItem(it.id, x => ({ ...x, he: [x.he[0], v] }))} />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Field label={s.fEnOne} value={it.en[0]} onChange={v => setItem(it.id, x => ({ ...x, en: [v, x.en[1]] }))} />
+                  <Field label={s.fEnMany} value={it.en[1]} onChange={v => setItem(it.id, x => ({ ...x, en: [x.en[0], v] }))} />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
+                  <Field num label={s.fKg} value={it.kg} onChange={v => setItem(it.id, x => ({ ...x, kg: num(v) }))} />
+                  <Del onPress={() => setEquivItems(equivItems.filter(x => x.id !== it.id))} />
+                </View>
+              </View>
+            ))}
+            <AddBtn onPress={() => setEquivItems([...equivItems, { id: 'n' + Date.now(), he: ['', ''], en: ['', ''], kg: 1 }])} />
+          </>
+        )}
+        {tab === 'ranks' && (
+          <>
+            {ranks.map(r => (
+              <View key={r.id} style={{ borderWidth: 1.5, borderColor: t.ink, borderRadius: 14, padding: 12, gap: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Field label={s.fNameHe} value={r.he} onChange={v => setRank(r.id, x => ({ ...x, he: v }))} />
+                  <Field label={s.fNameEn} value={r.en} onChange={v => setRank(r.id, x => ({ ...x, en: v }))} />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
+                  <Field num label={s.fMin} value={r.min} onChange={v => setRank(r.id, x => ({ ...x, min: num(v) }))} />
+                  {ranks.length > 1 && <Del onPress={() => setRanks(ranks.filter(x => x.id !== r.id))} />}
+                </View>
+              </View>
+            ))}
+            <AddBtn onPress={() => setRanks([...ranks, { id: 'n' + Date.now(), he: '', en: '', min: (ranks.reduce((m, r) => Math.max(m, r.min), 0)) + 500 }])} />
+          </>
+        )}
+        {tab === 'rules' && (
+          <View style={{ borderWidth: 1.5, borderColor: t.ink, borderRadius: 14, padding: 12, gap: 10 }}>
+            {(['workout', 'pr', 'streak', 'share'] as RuleKey[]).map(k => (
+              <Field key={k} num label={s[('rule' + k[0].toUpperCase() + k.slice(1)) as 'ruleWorkout']} value={rules[k]}
+                onChange={v => setRules({ ...rules, [k]: num(v) })} />
+            ))}
+          </View>
+        )}
+      </ScrollView>
+      <TabBar />
+    </Page>
+  );
+}
+
 // ---------------------------------------------------------------- Settings
 export function Settings() {
-  const { s, t, lang, setLang, themeKey, setTheme, role, setRole } = useApp();
+  const { s, t, lang, setLang, themeKey, setTheme, role, setRole, go } = useApp();
   return (
     <Page>
       <ScrollView style={scrollStyle()} contentContainerStyle={{ paddingTop: 10, paddingHorizontal: 20, paddingBottom: 20 }}>
@@ -716,6 +872,11 @@ export function Settings() {
           />
         </View>
         <T s={13} lh={1.4} style={{ marginTop: 8 }}>{s.roleNote}</T>
+        {role === 'coach' && (
+          <Btn onPress={() => go('admin')} style={{ marginTop: 14, height: 48, borderRadius: 14, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
+            <T w={700} s={16}>{s.admin}</T>
+          </Btn>
+        )}
         <T k="head" s={20} style={{ marginTop: 32 }}>{s.language}</T>
         <View style={{ marginTop: 12 }}>
           <Segmented

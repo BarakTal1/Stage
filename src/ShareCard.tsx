@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
-import { CARD_STR, CardColor, Lang, DEF, MONTH, WORKOUTS, carsText } from './data';
+import { CARD_STR, CardColor, Lang, DEF, MONTH, WORKOUTS, equivText } from './data';
 import { T, LOGO_BLACK, LOGO_RATIO, LOGO_WHITE } from './ui';
 import { useApp } from './store';
 
@@ -19,7 +19,7 @@ const CLEAR = {
 export function ShareCard({ variant, ink, lang, k }: {
   variant: CardColor | 'clear'; ink: 'light' | 'dark'; lang: Lang; k: number;
 }) {
-  const { total: workoutTotal, pct: workoutPct, prs, hidden, wk, period, photo } = useApp();
+  const { total: workoutTotal, pct: workoutPct, prs, hidden, wk, period, photo, equivFor } = useApp();
   const month = period === 'month';
   const total = month ? MONTH.total : workoutTotal;
   const pct = month ? MONTH.pct : workoutPct;
@@ -47,7 +47,7 @@ export function ShareCard({ variant, ink, lang, k }: {
   const date = '27.10.2026';
   const totalLabel = month ? st.totalMonth : st.total;
   const fromLast = month ? st.fromLastMonth : st.fromLast;
-  const equiv = carsText(total, lang);
+  const equiv = equivText(total, equivFor(total), lang);
 
   const hf = (props: object) => ({ he, ...props });
   const Pill = (c: { children: React.ReactNode; style: ViewStyle }) => (

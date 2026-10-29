@@ -170,6 +170,13 @@ export const INTENSITIES: { key: Intensity; he: string; en: string }[] = [
 export const S = {
   he: {
     kg: 'ק״ג', tabHome: 'בית', tabProgress: 'התקדמות', tabBoard: 'לוח', tabSettings: 'הגדרות', tabTrainees: 'מתאמנים',
+    rankLabel: 'דרגה', pts: 'נק׳', earnedTitle: 'נקודות שהרווחת', toNext: '{n} נק׳ לדרגה הבאה', topRank: 'הגעת לדרגה הגבוהה ביותר',
+    ruleWorkout: 'סיום אימון', rulePr: 'שיאים אישיים', ruleStreak: 'בונוס רצף שבועות', ruleShare: 'שיתוף סטורי',
+    rankUpTitle: 'עלית דרגה!', rankUpSub: 'הדרגה החדשה שלך', rankUpCta: 'וואו, תודה', rollAgain: 'עוד השוואה',
+    admin: 'ניהול תוכן', adminTitle: 'ניהול תוכן', adminEquiv: 'השוואות', adminRanks: 'דרגות', adminRules: 'נקודות',
+    adminNote: 'כאן שקד ואתה משנים את הרשימות. כרגע השינויים נשמרים רק עד שהאפליקציה נטענת מחדש. בגרסה האמיתית הם יישמרו בשרת.',
+    add: 'הוספה', remove: 'מחיקה', fHeOne: 'עברית, יחיד', fHeMany: 'עברית, רבים', fEnOne: 'אנגלית, יחיד', fEnMany: 'אנגלית, רבים',
+    fKg: 'משקל של אחד (ק״ג)', fNameHe: 'שם בעברית', fNameEn: 'שם באנגלית', fMin: 'מינימום נקודות', equivHint: 'הרשימה בוחרת פריט אקראי בכל פעם.',
     role: 'תצוגה', roleTrainee: 'מתאמן', roleCoach: 'מאמן', roleNote: 'תצוגת מאמן מוסיפה את מסך המתאמנים ואת החלפת התרגילים.',
     coachTitle: 'המתאמנים שלי', coachAll: 'כולם', coachAttention: 'דורשים תשומת לב', lastWorkout: 'אימון אחרון', daysAgo: 'לפני {n} ימים', today1: 'אתמול', perWeek: 'אימונים בשבוע', streakWeeks: 'שבועות ברצף', inactiveTag: 'לא התאמן {n} ימים', raiseTag: 'כדאי להעלות', raiseNote: 'הצעה בלבד. המאמן מחליט. המשקל לא השתנה ב-3 אימונים.', weightsTitle: 'משקלים', since: 'מאז תחילת ספטמבר', back: 'חזרה', none: 'אין מתאמנים להצגה',
     dateLong: 'יום שלישי, 27 באוקטובר', hello: 'בוקר טוב, נועה', cycle: 'מחזור אוקטובר', cycleCount: 'מתוך 12 הושלמו',
@@ -193,6 +200,13 @@ export const S = {
   },
   en: {
     kg: 'kg', tabHome: 'Home', tabProgress: 'Progress', tabBoard: 'Board', tabSettings: 'Settings', tabTrainees: 'Trainees',
+    rankLabel: 'Rank', pts: 'pts', earnedTitle: 'Points earned', toNext: '{n} pts to the next rank', topRank: 'You reached the top rank',
+    ruleWorkout: 'Finishing a workout', rulePr: 'Personal records', ruleStreak: 'Weekly streak bonus', ruleShare: 'Sharing a story',
+    rankUpTitle: 'Rank up!', rankUpSub: 'Your new rank', rankUpCta: 'Wow, thanks', rollAgain: 'Another one',
+    admin: 'Content admin', adminTitle: 'Content admin', adminEquiv: 'Comparisons', adminRanks: 'Ranks', adminRules: 'Points',
+    adminNote: 'Shaked and you edit the lists here. For now the changes last only until the app reloads. In the real version they save on a server.',
+    add: 'Add', remove: 'Delete', fHeOne: 'Hebrew, one', fHeMany: 'Hebrew, many', fEnOne: 'English, one', fEnMany: 'English, many',
+    fKg: 'Weight of one (kg)', fNameHe: 'Hebrew name', fNameEn: 'English name', fMin: 'Minimum points', equivHint: 'The list picks a random item each time.',
     role: 'View', roleTrainee: 'Trainee', roleCoach: 'Coach', roleNote: 'Coach view adds the trainees screen and exercise swaps.',
     coachTitle: 'My trainees', coachAll: 'All', coachAttention: 'Needs attention', lastWorkout: 'Last workout', daysAgo: '{n} days ago', today1: 'Yesterday', perWeek: 'Workouts per week', streakWeeks: 'weeks in a row', inactiveTag: 'Away {n} days', raiseTag: 'Ready to raise', raiseNote: 'A suggestion only. The coach decides. The weight did not change for 3 sessions.', weightsTitle: 'Weights', since: 'since early September', back: 'Back', none: 'No trainees to show',
     dateLong: 'Tuesday, 27 October', hello: 'Good morning, Noa', cycle: 'October cycle', cycleCount: 'of 12 done',
@@ -277,11 +291,74 @@ export type Period = 'workout' | 'month';
 export const MONTH = { name: { he: 'אוקטובר 2026', en: 'October 2026' }, total: 74200, pct: 9 };
 
 const CAR_KG = 1500;
-/** The total weight as a real-life object, for the share card. */
-export function carsText(total: number, lang: Lang) {
-  const n = Math.round((total / CAR_KG) * (total / CAR_KG < 10 ? 10 : 1)) / (total / CAR_KG < 10 ? 10 : 1);
-  if (n === 1) return lang === 'he' ? 'כמו מכונית אחת' : 'like one car';
-  return lang === 'he' ? `כמו ${n} מכוניות` : `like ${n} cars`;
+/** A funny thing to compare the lifted weight with. The studio edits this list in the admin screen. */
+export type EquivItem = { id: string; he: [string, string]; en: [string, string]; kg: number };
+
+export const EQUIV_DEFAULT: EquivItem[] = [
+  { id: 'hippo', he: ['היפופוטם קטן', 'היפופוטמים קטנים'], en: ['small hippo', 'small hippos'], kg: 500 },
+  { id: 'banana', he: ['בננה', 'בננות'], en: ['banana', 'bananas'], kg: 0.12 },
+  { id: 'car', he: ['מכונית', 'מכוניות'], en: ['car', 'cars'], kg: 1500 },
+  { id: 'fridge', he: ['מקרר', 'מקררים'], en: ['fridge', 'fridges'], kg: 80 },
+  { id: 'bamba', he: ['שקית במבה', 'שקיות במבה'], en: ['bag of Bamba', 'bags of Bamba'], kg: 0.06 },
+  { id: 'falafel', he: ['פיתה עם פלאפל', 'פיתות עם פלאפל'], en: ['falafel pita', 'falafel pitas'], kg: 0.45 },
+  { id: 'cat', he: ['חתול רחוב', 'חתולי רחוב'], en: ['street cat', 'street cats'], kg: 4 },
+  { id: 'piano', he: ['פסנתר כנף', 'פסנתרי כנף'], en: ['grand piano', 'grand pianos'], kg: 400 },
+  { id: 'camel', he: ['גמל', 'גמלים'], en: ['camel', 'camels'], kg: 600 },
+  { id: 'melon', he: ['אבטיח', 'אבטיחים'], en: ['watermelon', 'watermelons'], kg: 8 },
+  { id: 'hummus', he: ['קופסת חומוס', 'קופסאות חומוס'], en: ['tub of hummus', 'tubs of hummus'], kg: 0.5 },
+  { id: 'chihuahua', he: ['צ׳יוואווה', 'צ׳יוואוואים'], en: ['chihuahua', 'chihuahuas'], kg: 2.5 },
+  { id: 'sheep', he: ['כבשה', 'כבשים'], en: ['sheep', 'sheep'], kg: 70 },
+  { id: 'scooter', he: ['קורקינט חשמלי', 'קורקינטים חשמליים'], en: ['e-scooter', 'e-scooters'], kg: 15 },
+  { id: 'tank', he: ['טנק מרכבה', 'טנקי מרכבה'], en: ['Merkava tank', 'Merkava tanks'], kg: 65000 },
+  { id: 'avocado', he: ['אבוקדו', 'אבוקדואים'], en: ['avocado', 'avocados'], kg: 0.25 },
+];
+
+/**
+ * Picks one item for the roll `r` (from 0 to 1). Only items with a count that reads well are eligible:
+ * at least 2 and at most 50,000. The same roll gives the same item for the same total.
+ */
+export function pickEquiv(items: EquivItem[], total: number, r: number): EquivItem | null {
+  const count = (it: EquivItem) => Math.round(total / it.kg);
+  const good = items.filter(it => it.kg > 0 && count(it) >= 2 && count(it) <= 50000);
+  const pool = good.length ? good : items.filter(it => it.kg > 0 && count(it) >= 1);
+  return pool.length ? pool[Math.min(pool.length - 1, Math.floor(r * pool.length))] : null;
+}
+
+/** "like 3 small hippos". A count of 1 drops the number, so the Hebrew gender does not matter. */
+export function equivText(total: number, item: EquivItem | null, lang: Lang) {
+  if (!item) return '';
+  const n = Math.max(1, Math.round(total / item.kg));
+  const [one, many] = item[lang];
+  const num = n.toLocaleString('en-US');
+  if (lang === 'he') return n === 1 ? `כמו ${one}` : `כמו ${num} ${many}`;
+  return n === 1 ? `like 1 ${one}` : `like ${num} ${many}`;
+}
+
+/** Points. The studio edits the values in the admin screen. */
+export type RuleKey = 'workout' | 'pr' | 'streak' | 'share';
+export const RULES_DEFAULT: Record<RuleKey, number> = { workout: 10, pr: 15, streak: 2, share: 5 };
+
+export type Rank = { id: string; he: string; en: string; min: number };
+export const RANKS_DEFAULT: Rank[] = [
+  { id: 'r0', he: 'זרועות נודל', en: 'Noodle Arms', min: 0 },
+  { id: 'r1', he: 'מחמם ספסל', en: 'Bench Warmer', min: 100 },
+  { id: 'r2', he: 'סוחב שווארמה', en: 'Shawarma Hauler', min: 250 },
+  { id: 'r3', he: 'מרים שולחנות', en: 'Table Flipper', min: 500 },
+  { id: 'r4', he: 'היפו בהכשרה', en: 'Hippo in Training', min: 900 },
+  { id: 'r5', he: 'סולטן הסופרסט', en: 'Superset Sultan', min: 1500 },
+  { id: 'r6', he: 'מחסל פיתות', en: 'Pita Crusher', min: 2500 },
+  { id: 'r7', he: 'אגדת הסטייג׳', en: 'Stage Legend', min: 4000 },
+];
+// Starts just under the Hippo rank, so the first saved workout shows the rank-up notice.
+export const INITIAL_POINTS = 880;
+export const MOCK_STREAK_WEEKS = 5;
+
+/** The rank for a point total, and the next rank if there is one. */
+export function rankFor(points: number, ranks: Rank[]) {
+  const sorted = [...ranks].sort((a, b) => a.min - b.min);
+  let idx = 0;
+  sorted.forEach((r, i) => { if (points >= r.min) idx = i; });
+  return { idx, rank: sorted[idx], next: sorted[idx + 1] ?? null };
 }
 
 export type Role = 'trainee' | 'coach';
