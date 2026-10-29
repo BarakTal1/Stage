@@ -115,9 +115,10 @@ export async function deleteExercise(id: string): Promise<string | null> {
 export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
 /** Uploads an exercise video to storage and returns its public link. Staff only (the database enforces it). */
-export async function uploadExerciseVideo(exId: string, uri: string, mime?: string | null): Promise<{ url: string | null; error: string | null }> {
+export async function uploadExerciseVideo(exId: string, uri: string, mime?: string | null, file?: Blob | null): Promise<{ url: string | null; error: string | null }> {
   try {
-    const blob = await (await fetch(uri)).blob();
+    // On the web the picker gives the file itself. On a phone, read it from the local link.
+    const blob = file ?? (await (await fetch(uri)).blob());
     const type = mime || blob.type || 'video/mp4';
     const ext = type.includes('quicktime') ? 'mov' : type.includes('webm') ? 'webm' : type.includes('3gpp') ? '3gp' : 'mp4';
     const path = `${exId}/${Date.now()}.${ext}`;

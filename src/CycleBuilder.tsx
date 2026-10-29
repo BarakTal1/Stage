@@ -327,42 +327,48 @@ function VideoButtons({ exId, hasVideo, onUrl, message }: { exId: string; hasVid
   const { s, t, showToast } = useApp();
   const st = useStyles();
   const [busy, setBusy] = useState(false);
+  // The result shows here, under the buttons. A toast hides behind the window of the free exercise form.
+  const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null);
+  const say = (text: string, error = false) => { setStatus({ text, error }); showToast(text); };
 
   const send = async (result: ImagePicker.ImagePickerResult) => {
-    if (result.canceled) return;
+    if (result.canceled) { setStatus(null); return; }
     const a = result.assets[0];
-    if ((a.fileSize ?? 0) > MAX_VIDEO_BYTES) { showToast(s.videoTooBig); return; }
-    setBusy(true);
-    const r = await uploadExerciseVideo(exId, a.uri, a.mimeType);
+    const mb = Math.round((a.fileSize ?? 0) / 1048576);
+    if ((a.fileSize ?? 0) > MAX_VIDEO_BYTES) { say(`${s.videoTooBig} (${mb}MB)`, true); return; }
+    setBusy(true); setStatus({ text: s.uploading, error: false });
+    const r = await uploadExerciseVideo(exId, a.uri, a.mimeType, a.file);
     setBusy(false);
-    if (r.error || !r.url) { showToast(`${s.saveFailed}: ${r.error}`); return; }
+    if (r.error || !r.url) { say(`${s.saveFailed}: ${r.error}`, true); return; }
     onUrl(r.url);
-    showToast(message ?? s.videoUploaded);
+    say(message ?? s.videoUploaded);
   };
-  const record = async () => {
+  const run = async (open: () => Promise<ImagePicker.ImagePickerResult>) => {
     if (busy) return;
+    try { await send(await open()); } catch (e) { say(`${s.saveFailed}: ${e instanceof Error ? e.message : String(e)}`, true); }
+  };
+  const record = () => run(async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) { showToast(s.noCamera); return; }
-    await send(await ImagePicker.launchCameraAsync({
-      mediaTypes: 'videos', videoMaxDuration: 60, videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
-    }));
-  };
-  const pick = async () => {
-    if (busy) return;
-    await send(await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], videoMaxDuration: 60 }));
-  };
+    if (!perm.granted) throw new Error(s.noCamera);
+    return ImagePicker.launchCameraAsync({
+      mediaTypes: 'videos', videoMaxDuration: 15, videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
+    });
+  });
+  const pick = () => run(() => ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], videoMaxDuration: 15 }));
 
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-      <Btn onPress={record} style={st.small}><T w={700} s={14}>{s.recordVideo}</T></Btn>
-      <Btn onPress={pick} style={st.small}><T w={700} s={14}>{s.pickVideo}</T></Btn>
-      {busy && <T s={13}>{s.uploading}</T>}
-      {hasVideo && !busy && (
-        <>
-          <T w={500} s={13} c={t.accText}>{s.hasVideo}</T>
-          <Btn onPress={() => onUrl(null)} style={{ height: 34, justifyContent: 'center' }}><T w={700} s={13} c={t.accText}>{s.removeVideo}</T></Btn>
-        </>
-      )}
+    <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        <Btn onPress={record} style={st.small}><T w={700} s={14}>{s.recordVideo}</T></Btn>
+        <Btn onPress={pick} style={st.small}><T w={700} s={14}>{s.pickVideo}</T></Btn>
+        {hasVideo && !busy && (
+          <>
+            <T w={500} s={13} c={t.accText}>{s.hasVideo}</T>
+            <Btn onPress={() => { onUrl(null); setStatus(null); }} style={{ height: 34, justifyContent: 'center' }}><T w={700} s={13} c={t.accText}>{s.removeVideo}</T></Btn>
+          </>
+        )}
+      </View>
+      {status && <T s={13} lh={1.4} c={status.error ? t.accText : undefined}>{status.text}</T>}
     </View>
   );
 }
