@@ -7,6 +7,7 @@ import {
   ALL_IDS, EquivItem, Rank, RuleKey, TRAINEES, THEMES, Trainee, ThemeKey, VARIANT_NAME, Variant, WEEKS, WORKOUTS, WorkoutKey, fmt, partIds, rankFor, readyToRaise, videoUrl,
 } from './data';
 import { useApp } from './store';
+import { useAuth } from './auth';
 import { ShareCard } from './ShareCard';
 import {
   Btn, Chev, CloseX, ICON_BLACK, ICON_RATIO, ICON_WHITE, Image, Page, PreviewBg, Segmented, T, TabBar,
@@ -859,24 +860,25 @@ export function Admin() {
 
 // ---------------------------------------------------------------- Settings
 export function Settings() {
-  const { s, t, lang, setLang, themeKey, setTheme, role, setRole, go } = useApp();
+  const { s, t, lang, setLang, themeKey, setTheme, role, isAdmin, go } = useApp();
+  const { session, profile, signOut } = useAuth();
   return (
     <Page>
       <ScrollView style={scrollStyle()} contentContainerStyle={{ paddingTop: 10, paddingHorizontal: 20, paddingBottom: 20 }}>
         <T k="head" s={32} lh={1.1}>{s.settings}</T>
         <T k="head" s={20} style={{ marginTop: 30 }}>{s.role}</T>
-        <View style={{ marginTop: 12 }}>
-          <Segmented
-            value={role} onChange={setRole} ink={t.ink} bg={t.bg}
-            options={[{ key: 'trainee', label: s.roleTrainee }, { key: 'coach', label: s.roleCoach }]}
-          />
-        </View>
-        <T s={13} lh={1.4} style={{ marginTop: 8 }}>{s.roleNote}</T>
-        {role === 'coach' && (
+        <T s={16} style={{ marginTop: 10 }}>
+          {profile?.role === 'admin' ? s.roleAdmin : role === 'coach' ? s.roleCoach : s.roleTrainee}
+        </T>
+        <T s={13} lh={1.4} style={{ marginTop: 4 }} he={false}>{s.signedInAs}{session?.user.email}</T>
+        {isAdmin && (
           <Btn onPress={() => go('admin')} style={{ marginTop: 14, height: 48, borderRadius: 14, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
             <T w={700} s={16}>{s.admin}</T>
           </Btn>
         )}
+        <Btn onPress={signOut} style={{ marginTop: 10, height: 48, borderRadius: 14, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>
+          <T w={700} s={16}>{s.signOut}</T>
+        </Btn>
         <T k="head" s={20} style={{ marginTop: 32 }}>{s.language}</T>
         <View style={{ marginTop: 12 }}>
           <Segmented

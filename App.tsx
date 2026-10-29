@@ -4,14 +4,20 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { Heebo_400Regular, Heebo_500Medium, Heebo_700Bold } from '@expo-google-fonts/heebo';
 import { AppProvider, useApp } from './src/store';
+import { AuthProvider, useAuth } from './src/auth';
+import { Login } from './src/Login';
 import { Admin, Board, Coach, Home, Log, Progress, RankUp, Settings, Share, Summary } from './src/screens';
 import { T } from './src/ui';
 
 const SCREENS = { home: Home, log: Log, summary: Summary, share: Share, progress: Progress, board: Board, settings: Settings, coach: Coach, admin: Admin };
 
 function Router() {
-  const { screen, toast, he, frame } = useApp();
-  const Screen = SCREENS[screen];
+  const { screen, toast, he, frame, isAdmin } = useApp();
+  const { ready, session } = useAuth();
+  if (!ready) return null;
+  if (!session) return <Login />;
+  // Only the admin opens the admin screen. The database enforces this too.
+  const Screen = screen === 'admin' && !isAdmin ? Home : SCREENS[screen];
   return (
     <View style={{ flex: 1 }}>
       <Screen />
@@ -43,6 +49,7 @@ export default function App() {
   const frame = width > 520;
   const scale = Math.min(1, (height - 48) / 870);
   return (
+    <AuthProvider>
     <AppProvider frame={frame}>
       {frame ? (
         <View style={{ flex: 1, backgroundColor: '#D8D5D0', alignItems: 'center', justifyContent: 'center' }}>
@@ -59,5 +66,6 @@ export default function App() {
       )}
       <StatusBar style="auto" />
     </AppProvider>
+    </AuthProvider>
   );
 }

@@ -1,4 +1,6 @@
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from './auth';
+import { loadLists, saveEquiv, saveRanks, saveRules } from './lists';
 import {
   EQUIV_DEFAULT, EquivItem, INITIAL_POINTS, MOCK_STREAK_WEEKS, RANKS_DEFAULT, RULES_DEFAULT, Rank, RuleKey, pickEquiv, rankFor,
   CardColor, DEFAULT_VARIANT, DEF, ExId, Intensity, Lang, S, SeriesKey, SetRow, Strings, THEMES, Theme, ThemeKey,
@@ -28,7 +30,8 @@ type Ctx = {
   chartEx: SeriesKey; setChartEx: (k: SeriesKey) => void;
   hidden: boolean; toggleHidden: () => void;
   period: Period; setPeriod: (p: Period) => void;
-  role: Role; setRole: (r: Role) => void;
+  /** The screen role: coaches and admins both see the coach screens. */
+  role: Role; isAdmin: boolean;
   // Editable lists: the studio changes them in the admin screen.
   equivItems: EquivItem[]; setEquivItems: (v: EquivItem[]) => void;
   ranks: Rank[]; setRanks: (v: Rank[]) => void;
@@ -61,10 +64,12 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
   // Sharing on the boards is opt-in, so the trainee starts hidden.
   const [hidden, setHidden] = useState(true);
   const [period, setPeriod] = useState<Period>('workout');
-  const [role, setRole] = useState<Role>('trainee');
-  const [equivItems, setEquivItems] = useState(EQUIV_DEFAULT);
-  const [ranks, setRanks] = useState(RANKS_DEFAULT);
-  const [rules, setRules] = useState(RULES_DEFAULT);
+  const { session, profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
+  const role: Role = profile && profile.role !== 'trainee' ? 'coach' : 'trainee';
+  const [equivItems, setEquivRaw] = useState(EQUIV_DEFAULT);
+  const [ranks, setRanksRaw] = useState(RANKS_DEFAULT);
+  const [rules, setRulesRaw] = useState(RULES_DEFAULT);
   const [roll, setRoll] = useState(Math.random);
   const [points, setPoints] = useState(INITIAL_POINTS);
   const [earned, setEarned] = useState<Ctx['earned']>(null);
@@ -141,6 +146,33 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
     toastTimer.current = setTimeout(() => setToast(null), 2200);
   }, []);
 
+  // Lists: load from the database after sign-in. The admin saves each change after a short pause.
+  const userId = session?.user.id ?? null;
+  useEffect(() => {
+    if (!userId) return;
+    let live = true;
+    loadLists().then(l => {
+      if (!live) return;
+      if (l.equiv) setEquivRaw(l.equiv);
+      if (l.ranks) setRanksRaw(l.ranks);
+      if (l.rules) setRulesRaw(l.rules);
+    });
+    return () => { live = false; };
+  }, [userId]);
+
+  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const persist = useCallback((name: string, run: () => Promise<string | null>) => {
+    if (!isAdmin) return;
+    clearTimeout(timers.current[name]);
+    timers.current[name] = setTimeout(async () => {
+      const err = await run();
+      if (err) showToast(`${S[lang].saveFailed}: ${err}`);
+    }, 700);
+  }, [isAdmin, lang, showToast]);
+  const setEquivItems = useCallback((v: EquivItem[]) => { setEquivRaw(v); persist('equiv', () => saveEquiv(v)); }, [persist]);
+  const setRanks = useCallback((v: Rank[]) => { setRanksRaw(v); persist('ranks', () => saveRanks(v)); }, [persist]);
+  const setRules = useCallback((v: Record<RuleKey, number>) => { setRulesRaw(v); persist('rules', () => saveRules(v)); }, [persist]);
+
   const value = useMemo<Ctx>(() => {
     const variant = variants[wk];
     const { prev, prevDate } = WORKOUTS[wk];
@@ -161,7 +193,7 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
       go: (sc: Screen) => { if (sc === 'home') live.current.saved = false; setScreen(sc); },
       chartEx, setChartEx,
       hidden, toggleHidden: () => setHidden(h => !h),
-      period, setPeriod, role, setRole, photo, setPhoto,
+      period, setPeriod, role, isAdmin, photo, setPhoto,
       equivItems, setEquivItems, ranks, setRanks, rules, setRules,
       roll, rollEquiv: () => setRoll(Math.random()), equivFor: (tot: number) => pickEquiv(equivItems, tot, roll),
       points, earned, rankUp, dismissRankUp: () => setRankUp(null),
@@ -186,7 +218,7 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
       clearInk, setClearInk,
       toast, showToast,
     };
-  }, [lang, he, s, t, themeKey, screen, frame, ex, bump, setWeight, intensity, setIntensity, resolve, swapEx, rangeFor, wk, variants, chartEx, hidden, period, role, photo, equivItems, ranks, rules, roll, points, earned, rankUp, award, shareMode,
+  }, [lang, he, s, t, themeKey, screen, frame, ex, bump, setWeight, intensity, setIntensity, resolve, swapEx, rangeFor, wk, variants, chartEx, hidden, period, role, isAdmin, photo, equivItems, ranks, rules, setEquivItems, setRanks, setRules, roll, points, earned, rankUp, award, shareMode,
       cardColorRaw, cardLangRaw, clearInk, toast, showToast]);
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
