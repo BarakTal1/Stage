@@ -1,5 +1,5 @@
 import React from 'react';
-import { Linking, Modal, ScrollView, Switch, TextInput, View, ViewStyle } from 'react-native';
+import { Linking, Modal, Platform, ScrollView, Switch, TextInput, View, ViewStyle } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 import {
@@ -9,6 +9,7 @@ import {
 import { useApp } from './store';
 import { Gender, useAuth } from './auth';
 import { ShareCard } from './ShareCard';
+import { cardToPng, downloadPng, sharePng } from './shareImage';
 import {
   Btn, Chev, CloseX, ICON_BLACK, ICON_RATIO, ICON_WHITE, Image, Page, PreviewBg, Segmented, T, TabBar,
 } from './ui';
@@ -370,9 +371,47 @@ const PW = 270, PH = 480;
 export function Share() {
   const {
     s, t, he, go, shareMode, setShareMode, cardColor, setCardColor, cardLang, setCardLang,
-    clearInk, setClearInk, frame, showToast, period, setPeriod, photo, setPhoto, rollEquiv,
+    clearInk, setClearInk, frame, showToast, period, setPeriod, photo, setPhoto, rollEquiv, roll, awardShare,
   } = useApp();
   const clear = shareMode === 'clear';
+  const isWeb = Platform.OS === 'web';
+  // The PNG is made before the tap, so the share sheet opens at once. Some phones refuse a share that starts late.
+  const exportRef = React.useRef<React.ComponentRef<typeof View>>(null);
+  const [png, setPng] = React.useState<Blob | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const cardKey = [shareMode, cardColor, cardLang, clearInk, period, photo, roll].join('|');
+  React.useEffect(() => {
+    if (!isWeb) return;
+    setPng(null);
+    let live = true;
+    const timer = setTimeout(async () => {
+      try {
+        const blob = await cardToPng(exportRef.current as unknown as HTMLElement);
+        if (live) setPng(blob);
+      } catch (e) {
+        console.warn('The story card could not be drawn', e);
+        if (live) setPng(null);
+      }
+    }, 600);
+    return () => { live = false; clearTimeout(timer); };
+  }, [isWeb, cardKey]);
+  const onShare = async () => {
+    if (!png) { showToast(s.sharePreparing); return; }
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await sharePng(png, 'stage-story.png');
+      // Points come only after the person finishes the share sheet.
+      if (r === 'shared') { awardShare(); showToast(s.shareDone); }
+      else if (r === 'downloaded') showToast(s.sharedSaved);
+    } catch { showToast(s.shareFailed); }
+    setBusy(false);
+  };
+  const onDownload = () => {
+    if (!png) { showToast(s.sharePreparing); return; }
+    downloadPng(png, 'stage-story.png');
+    showToast(s.sharedSaved);
+  };
   const pickPhoto = async () => {
     const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: true, aspect: [1, 1] });
     if (r.assets?.[0]) setPhoto(r.assets[0].uri);
@@ -446,13 +485,22 @@ export function Share() {
         )}
       </ScrollView>
       <View style={{ paddingHorizontal: 20, paddingBottom: frame ? 34 : 16, gap: 10 }}>
-        {/* Sharing and saving the card are not built yet. The buttons say so and give no points. */}
-        <Btn onPress={() => showToast(s.soonToast)} style={{ height: 56, borderRadius: 16, backgroundColor: t.acc, alignItems: 'center', justifyContent: 'center', opacity: 0.55 }}>
-          <T w={700} s={18} c={t.onAcc}>{s.insta} · {s.soon}</T>
+        {/* On the web the card goes to the share sheet. The phone app comes later, so those buttons say soon. */}
+        <Btn onPress={isWeb ? onShare : () => showToast(s.soonToast)} style={{ height: 56, borderRadius: 16, backgroundColor: t.acc, alignItems: 'center', justifyContent: 'center', opacity: isWeb && png && !busy ? 1 : 0.55 }}>
+          <T w={700} s={18} c={t.onAcc}>{s.insta}{!isWeb ? ` · ${s.soon}` : !png ? ` · ${s.sharePreparing}` : ''}</T>
         </Btn>
-        <Btn onPress={() => showToast(s.soonToast)} style={{ height: 56, borderRadius: 16, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center', opacity: 0.55 }}>
-          <T w={700} s={17}>{s.saveRoll} · {s.soon}</T>
+        {isWeb && png && <T s={12} style={{ textAlign: 'center' }}>{s.shareHint}</T>}
+        <Btn onPress={isWeb ? onDownload : () => showToast(s.soonToast)} style={{ height: 56, borderRadius: 16, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center', opacity: isWeb && png ? 1 : 0.55 }}>
+          <T w={700} s={17}>{isWeb ? s.downloadImage : `${s.saveRoll} · ${s.soon}`}</T>
         </Btn>
+        {isWeb && (
+          // The off-screen position sits on the outer View. The drawn View has none, or the picture would be empty.
+          <View pointerEvents="none" style={{ position: 'absolute', left: -5000, top: 0, width: 1080, height: 1920 }}>
+            <View ref={exportRef} style={{ width: 1080, height: 1920 }}>
+              <ShareCard variant={clear ? 'clear' : cardColor} ink={clearInk} lang={cardLang} k={1} />
+            </View>
+          </View>
+        )}
       </View>
     </Page>
   );
