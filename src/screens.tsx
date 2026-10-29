@@ -18,6 +18,8 @@ const scrollStyle = (extra: object = {}) => ({ flex: 1 as const, ...extra });
 // ---------------------------------------------------------------- Home
 export function Home() {
   const { s, t, go, lang, wk, setWk, focus, points, ranks } = useApp();
+  const { profile } = useAuth();
+  const firstName = profile?.name.trim().split(/\s+/)[0];
   const myRank = rankFor(points, ranks).rank;
   const segs = Array.from({ length: 12 }, (_, i) => ({ l: i === 7 ? wk : i % 2 ? 'B' : 'A', done: i < 7, today: i === 7 }));
   const names = (ids: ExId[]) => ids.map(id => DEF[id][lang]);
@@ -35,7 +37,7 @@ export function Home() {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
           <View style={{ gap: 4, flex: 1 }}>
             <T s={14} lh={1.3}>{s.dateLong}</T>
-            <T k="head" s={30} lh={1.1}>{s.hello}</T>
+            <T k="head" s={30} lh={1.1}>{s.hello}{firstName ? `, ${firstName}` : ''}</T>
             <T s={13}>{s.rankLabel}: <T w={700} s={13} c={t.accText}>{myRank[lang]}</T> · <T k="num" w={800} s={13}>{points}</T> {s.pts}</T>
           </View>
           <Image source={t.icon === 'black' ? ICON_BLACK : ICON_WHITE} contentFit="contain" style={{ width: 58, height: 58 / ICON_RATIO, margin: 8 }} />
