@@ -1,5 +1,5 @@
 import React from 'react';
-import { Linking, Modal, ScrollView, TextInput, View, ViewStyle } from 'react-native';
+import { Linking, Modal, ScrollView, Switch, TextInput, View, ViewStyle } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 import {
@@ -871,7 +871,7 @@ export function Admin() {
 
 // ---------------------------------------------------------------- Settings
 export function Settings() {
-  const { s, t, lang, setLang, themeKey, setTheme, role, isAdmin, go } = useApp();
+  const { s, t, lang, setLang, themeKey, setTheme, role, isAdmin, canPreview, viewAsTrainee, setViewAsTrainee, go } = useApp();
   const { session, profile, signOut } = useAuth();
   return (
     <Page>
@@ -879,8 +879,19 @@ export function Settings() {
         <T k="head" s={32} lh={1.1}>{s.settings}</T>
         <T k="head" s={20} style={{ marginTop: 30 }}>{s.role}</T>
         <T s={16} style={{ marginTop: 10 }}>
-          {profile?.role === 'admin' ? s.roleAdmin : role === 'coach' ? s.roleCoach : s.roleTrainee}
+          {isAdmin ? s.roleAdmin : role === 'coach' ? s.roleCoach : s.roleTrainee}
         </T>
+        {canPreview && (
+          <View style={{ marginTop: 14, gap: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <T w={700} s={16} style={{ flex: 1 }}>{s.viewAsTrainee}</T>
+              <View style={{ direction: 'ltr' } as ViewStyle}>
+                <Switch value={viewAsTrainee} onValueChange={setViewAsTrainee} trackColor={{ true: t.acc, false: '#B8B2AC' }} />
+              </View>
+            </View>
+            <T s={13} lh={1.4}>{s.viewAsTraineeNote}</T>
+          </View>
+        )}
         <T s={13} lh={1.4} style={{ marginTop: 4 }} he={false}>{s.signedInAs}{session?.user.email}</T>
         {isAdmin && (
           <Btn onPress={() => go('admin')} style={{ marginTop: 14, height: 48, borderRadius: 14, borderWidth: 1.5, borderColor: t.ink, alignItems: 'center', justifyContent: 'center' }}>

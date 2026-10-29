@@ -9,12 +9,12 @@ import { Login } from './src/Login';
 import { Details } from './src/Details';
 import { Cycles } from './src/CycleBuilder';
 import { Admin, Board, Coach, Home, Log, Progress, RankUp, Settings, Share, Summary } from './src/screens';
-import { T } from './src/ui';
+import { Btn, T } from './src/ui';
 
 const SCREENS = { home: Home, log: Log, summary: Summary, share: Share, progress: Progress, board: Board, settings: Settings, coach: Coach, admin: Admin, profile: Details, cycles: Cycles };
 
 function Router() {
-  const { screen, toast, he, frame, isAdmin } = useApp();
+  const { screen, toast, he, frame, isAdmin, viewAsTrainee, setViewAsTrainee, s, t } = useApp();
   const { ready, session, profile } = useAuth();
   if (!ready) return null;
   if (!session) return <Login />;
@@ -25,6 +25,11 @@ function Router() {
   const Screen = screen === 'admin' && !isAdmin ? Home : SCREENS[screen];
   return (
     <View style={{ flex: 1 }}>
+      {viewAsTrainee && (
+        <Btn onPress={() => setViewAsTrainee(false)} style={{ backgroundColor: t.acc, paddingVertical: 6, alignItems: 'center' }}>
+          <T w={700} s={12} c={t.onAcc}>{s.previewBanner}</T>
+        </Btn>
+      )}
       <Screen />
       <RankUp />
       {toast && (

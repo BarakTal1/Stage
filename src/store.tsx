@@ -33,6 +33,8 @@ type Ctx = {
   period: Period; setPeriod: (p: Period) => void;
   /** The screen role: coaches and admins both see the coach screens. */
   role: Role; isAdmin: boolean;
+  /** The admin can look at the app as a trainee does. */
+  canPreview: boolean; viewAsTrainee: boolean; setViewAsTrainee: (v: boolean) => void;
   // Editable lists: the studio changes them in the admin screen.
   equivItems: EquivItem[]; setEquivItems: (v: EquivItem[]) => void;
   /** The ranks for the signed-in user's gender. */
@@ -69,8 +71,11 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
   const [hidden, setHidden] = useState(true);
   const [period, setPeriod] = useState<Period>('workout');
   const { session, profile } = useAuth();
-  const isAdmin = profile?.role === 'admin';
-  const role: Role = profile && profile.role !== 'trainee' ? 'coach' : 'trainee';
+  const canPreview = profile?.role === 'admin';
+  const [viewAsTrainee, setViewAsTrainee] = useState(false);
+  const previewing = canPreview && viewAsTrainee;
+  const isAdmin = canPreview && !previewing;
+  const role: Role = profile && profile.role !== 'trainee' && !previewing ? 'coach' : 'trainee';
   const [equivItems, setEquivRaw] = useState(EQUIV_DEFAULT);
   const [rankLists, setRankLists] = useState<Record<Gender, Rank[]>>({ male: RANKS_DEFAULT, female: RANKS_FEMALE_DEFAULT });
   const ranks = rankLists[profile?.gender ?? 'male'];
@@ -177,13 +182,13 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
 
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const persist = useCallback((name: string, run: () => Promise<string | null>) => {
-    if (!isAdmin) return;
+    if (!canPreview) return;
     clearTimeout(timers.current[name]);
     timers.current[name] = setTimeout(async () => {
       const err = await run();
       if (err) showToast(`${S[lang].saveFailed}: ${err}`);
     }, 700);
-  }, [isAdmin, lang, showToast]);
+  }, [canPreview, lang, showToast]);
   const setEquivItems = useCallback((v: EquivItem[]) => { setEquivRaw(v); persist('equiv', () => saveEquiv(v)); }, [persist]);
   const setRankList = useCallback((g: Gender, v: Rank[]) => {
     setRankLists(cur => ({ ...cur, [g]: v }));
@@ -211,7 +216,7 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
       go: (sc: Screen) => { if (sc === 'home') live.current.saved = false; setScreen(sc); },
       chartEx, setChartEx,
       hidden, toggleHidden: () => setHidden(h => !h),
-      period, setPeriod, role, isAdmin, photo, setPhoto,
+      period, setPeriod, role, isAdmin, canPreview, viewAsTrainee: previewing, setViewAsTrainee, photo, setPhoto,
       equivItems, setEquivItems, ranks, rankLists, setRankList, rules, setRules,
       roll, rollEquiv: () => setRoll(Math.random()), equivFor: (tot: number) => pickEquiv(equivItems, tot, roll),
       points, earned, rankUp, dismissRankUp: () => setRankUp(null),
@@ -236,7 +241,7 @@ export function AppProvider({ frame, children }: { frame: boolean; children: Rea
       clearInk, setClearInk,
       toast, showToast, reloadCycle,
     };
-  }, [cycleVersion, reloadCycle, lang, he, s, t, themeKey, screen, frame, ex, bump, setWeight, intensity, setIntensity, resolve, swapEx, rangeFor, wk, variants, chartEx, hidden, period, role, isAdmin, photo, equivItems, ranks, rankLists, rules, setEquivItems, setRankList, setRules, roll, points, earned, rankUp, award, shareMode,
+  }, [cycleVersion, reloadCycle, lang, he, s, t, themeKey, screen, frame, ex, bump, setWeight, intensity, setIntensity, resolve, swapEx, rangeFor, wk, variants, chartEx, hidden, period, role, isAdmin, canPreview, previewing, photo, equivItems, ranks, rankLists, rules, setEquivItems, setRankList, setRules, roll, points, earned, rankUp, award, shareMode,
       cardColorRaw, cardLangRaw, clearInk, toast, showToast]);
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
